@@ -4,7 +4,7 @@ export const data = new SlashCommandBuilder().setName('ping').setDescription('О
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   // Вариант 1: Используем reply с получением ответа через withResponse
-  const response = await interaction.reply({ content: 'Измеряем пинг...', withResponse: true })
+  await interaction.reply({ content: 'Измеряем пинг...', withResponse: true })
 
   // Измеряем задержку на основе времени
   const apiLatency = interaction.client.ws.ping
