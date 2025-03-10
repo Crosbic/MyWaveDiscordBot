@@ -6,7 +6,6 @@ import { REST, Routes } from 'discord.js'
 
 import config from './config.js'
 
-// Получение директории текущего модуля
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -18,7 +17,6 @@ const commandFiles = fs
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file)
-  // Используем динамический импорт для ESM
   const command = await import(`file://${filePath}`)
 
   if ('data' in command && 'execute' in command) {
@@ -30,17 +28,14 @@ for (const file of commandFiles) {
   }
 }
 
-// Создаем экземпляр REST
 const rest = new REST().setToken(config.token)
 
-// Регистрация команд
 ;(async () => {
   try {
     console.log(`Начинаем регистрацию ${commands.length} слеш-команд.`)
 
     let data
     if (config.devGuildId) {
-      // Зарегистрировать команды для конкретного сервера (быстрее для разработки)
       data = await rest.put(Routes.applicationGuildCommands(config.clientId, config.devGuildId), {
         body: commands
       })
@@ -48,7 +43,6 @@ const rest = new REST().setToken(config.token)
         `Успешно зарегистрировано ${(data as any[]).length} команд на сервере разработки.`
       )
     } else {
-      // Зарегистрировать команды глобально (может занять до часа)
       data = await rest.put(Routes.applicationCommands(config.clientId), { body: commands })
       console.log(`Успешно зарегистрировано ${(data as any[]).length} глобальных команд.`)
     }

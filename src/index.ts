@@ -4,20 +4,23 @@ import { fileURLToPath } from 'url'
 
 import { Client, Collection, Events, GatewayIntentBits } from 'discord.js'
 
-import config from './config.js'
+import bodyParser from 'body-parser'
+import express from 'express'
 
-// Получение директории текущего модуля
+import config from './config.js'
+import { TokenStoreService } from './services/token-store.service.js'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Расширение типов Client для добавления коллекции команд
+const tokenStore = TokenStoreService.getInstance()
+
 declare module 'discord.js' {
   interface Client {
     commands: Collection<string, any>
   }
 }
 
-// Определение интентов (разрешений) для бота
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -27,10 +30,8 @@ const client = new Client({
   ]
 })
 
-// Инициализация коллекции команд
 client.commands = new Collection()
 
-// Загрузка команд
 const commandsPath = path.join(__dirname, 'commands')
 const commandFiles = fs
   .readdirSync(commandsPath)
@@ -51,7 +52,6 @@ for (const file of commandFiles) {
   }
 }
 
-// Загрузка обработчиков событий
 const eventsPath = path.join(__dirname, 'events')
 const eventFiles = fs
   .readdirSync(eventsPath)
@@ -68,7 +68,6 @@ for (const file of eventFiles) {
   }
 }
 
-// Обработка слеш-команд
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) return
 
@@ -97,10 +96,44 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 })
 
-// Обработка события готовности
 client.once(Events.ClientReady, readyClient => {
   console.log(`Бот запущен как ${readyClient.user.tag}`)
 })
 
-// Подключение бота к Discord
 client.login(config.token).then(_ => console.log('Логин по токену успешен'))
+
+const app = express()
+app.use(bodyParser.json())
+
+const API_PORT = process.env.API_PORT || 3001
+
+app.post('/auth/callback', (req: any, res: any) => {
+  const { userId, accessToken, userInfo } = req.body
+
+  if (!userId || !accessToken || !userInfo) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required parameters'
+    })
+  }
+
+  tokenStore.setToken(userId, accessToken, userInfo)
+  console.log(`Получен токен для пользователя ${userId} ${accessToken}`)
+
+  const discordUser = client.users.cache.get(userId)
+  if (discordUser) {
+    discordUser
+      .send(`Вы успешно авторизовались в Яндексе! Теперь можно использовать команды бота.`)
+      .catch(error => console.error('Не удалось отправить сообщение пользователю:', error))
+  }
+
+  return res.json({ success: true })
+})
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', userTokensCount: tokenStore.size })
+})
+
+app.listen(API_PORT, () => {
+  console.log(`API для авторизации запущен на порту ${API_PORT}`)
+})

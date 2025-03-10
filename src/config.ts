@@ -12,7 +12,6 @@ const config: Config = {
   // devGuildId: process.env.DEV_GUILD_ID
 }
 
-// Проверка наличия обязательных конфигураций
 if (!config.token) {
   throw new Error('DISCORD_TOKEN отсутствует в .env файле')
 }
