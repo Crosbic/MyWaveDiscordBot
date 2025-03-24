@@ -3,7 +3,7 @@ import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js'
 import { TokenStoreService } from '../services/token-store.service.js'
 
 export const data = new SlashCommandBuilder()
-  .setName('yandex-logout')
+  .setName('logout')
   .setDescription('Выйти из аккаунта Яндекса')
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -12,7 +12,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   if (!tokenStore.hasToken(userId)) {
     await interaction.reply({
-      content: 'Вы не авторизованы в Яндексе. Используйте `/yandex-login` чтобы авторизоваться.',
+      content: 'Вы не авторизованы через Яндекс. Используйте `/login` чтобы авторизоваться.',
       ephemeral: true
     })
     return
@@ -21,7 +21,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   tokenStore.removeToken(userId)
 
   await interaction.reply({
-    content: 'Вы успешно вышли из аккаунта Яндекса!',
+    content: 'Вы успешно удалили данные Яндекс аккаунта у бота!',
     ephemeral: true
   })
 }

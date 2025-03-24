@@ -3,7 +3,7 @@ import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js'
 import { TokenStoreService } from '../services/token-store.service.js'
 
 export const data = new SlashCommandBuilder()
-  .setName('yandex-login')
+  .setName('login')
   .setDescription('Авторизоваться через Яндекс')
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -12,13 +12,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   if (tokenStore.hasToken(userId)) {
     await interaction.reply({
-      content: 'Вы уже авторизованы в Яндексе! Используйте `/yandex-logout` чтобы выйти.',
+      content: 'Вы уже авторизованы в Яндексе! Используйте `/logout` чтобы выйти.',
       ephemeral: true
     })
     return
   }
 
-  const authUrl = `http://localhost:3000/my-wave/auth?userId=${userId}&debug=true`
+  const authUrl = `${process.env.API}/auth?userId=${userId}&debug=true`
 
   await interaction.reply({
     content: `Для авторизации в Яндексе перейдите по ссылке: ${authUrl}`,
