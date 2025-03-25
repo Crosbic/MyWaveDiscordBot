@@ -9,7 +9,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const userDiscordId = interaction.user.id
-  const userData: IUserData | undefined = TokenStoreService.getInstance().getData(userDiscordId)
+  const userData: IUserData | undefined = TokenStoreService.getInstance().getData(userDiscordId)?.userInfo
 
   if (!userData) {
     return interaction.reply({
@@ -18,29 +18,23 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     })
   }
 
-  // Создаем embed с информацией о пользователе
   const userEmbed = new EmbedBuilder()
     .setColor('#86cecb')
     .setTitle('Информация о вашем аккаунте Яндекс')
-    .setThumbnail(
-      // eslint-disable-next-line no-constant-binary-expression
-      `https://avatars.mds.yandex.net/get-yapic/${userData.userInfo.avatarUrl}/islands-retina-50` ||
-        'https://music.yandex.ru/i/ytimg/static/favicon_200.png'
-    )
+    .setThumbnail(`https://avatars.mds.yandex.net/get-yapic/${userData.avatarUrl}/islands-retina-50`)
     .addFields(
       {
         name: 'Имя пользователя',
-        value: userData.userInfo.fullName || 'Нет данных',
+        value: userData.fullName || 'Нет данных',
         inline: true
       },
-      { name: 'ID', value: userData.userInfo.id, inline: true }
+      { name: 'Ник', value: userData.nickName, inline: true },
+      { name: 'Плюс', value: userData.hasPlus ? 'активен' : 'отсутствует', inline: true }
     )
     .setFooter({
-      text: 'Яндекс Музыка',
-      iconURL: 'https://music.yandex.ru/i/ytimg/static/favicon_200.png'
+      text: 'My Wave Bot'
     })
     .setTimestamp()
 
-  // Отправляем embed
   return interaction.reply({ embeds: [userEmbed], ephemeral: true })
 }

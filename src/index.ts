@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 
 import { Client, Collection, Events, GatewayIntentBits } from 'discord.js'
 
+import axios from 'axios'
 import bodyParser from 'body-parser'
 import express from 'express'
 
@@ -33,9 +34,7 @@ const client = new Client({
 client.commands = new Collection()
 
 const commandsPath = path.join(__dirname, 'commands')
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter(file => file.endsWith('.js') || file.endsWith('.ts'))
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js') || file.endsWith('.ts'))
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file)
@@ -46,16 +45,12 @@ for (const file of commandFiles) {
   if ('data' in command && 'execute' in command) {
     client.commands.set(command.data.name, command)
   } else {
-    console.log(
-      `[ПРЕДУПРЕЖДЕНИЕ] Команда в ${filePath} отсутствует обязательное свойство "data" или "execute".`
-    )
+    console.log(`[ПРЕДУПРЕЖДЕНИЕ] Команда в ${filePath} отсутствует обязательное свойство "data" или "execute".`)
   }
 }
 
 const eventsPath = path.join(__dirname, 'events')
-const eventFiles = fs
-  .readdirSync(eventsPath)
-  .filter(file => file.endsWith('.js') || file.endsWith('.ts'))
+const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js') || file.endsWith('.ts'))
 
 for (const file of eventFiles) {
   const filePath = path.join(eventsPath, file)
@@ -107,30 +102,47 @@ app.use(bodyParser.json())
 
 const API_PORT = process.env.API_PORT || 3001
 
-app.post('/auth/callback', (req: any, res: any) => {
+app.post('/auth/callback', async (req: any, res: any) => {
   const { userId, accessToken, userInfo } = req.body
+  const discordUser = client.users.cache.get(userId)
+  const response = await axios.get('https://api.music.yandex.net/account/status', {
+    headers: {
+      Authorization: `OAuth ${accessToken}`
+    }
+  })
 
   if (!userId || !accessToken || !userInfo) {
     return res.status(400).json({
       success: false,
-      message: 'Missing required parameters'
+      message: 'Не получены все нужные данные'
     })
   }
 
-  tokenStore.setToken(userId, accessToken, userInfo)
-  console.log(`Получен токен для пользователя ${userId} ${accessToken}`)
+  userInfo.hasPlus = response.data.result.plus.hasPlus
 
-  const discordUser = client.users.cache.get(userId)
+  if (userInfo.hasPlus) {
+    tokenStore.setToken(userId, accessToken, userInfo)
+    console.log(`Получен токен для пользователя ${userId} ${accessToken}`)
+  }
+
   if (discordUser) {
-    discordUser
-      .send(`Вы успешно авторизовались в Яндексе! Теперь можно использовать команды бота.`)
-      .catch(error => console.error('Не удалось отправить сообщение пользователю:', error))
+    if (!userInfo.hasPlus) {
+      discordUser
+        .send(`Для авторизации на аккаунте Яндекса должна быть активна подписка Плюс.`)
+        .catch(error => console.error('Не удалось отправить сообщение пользователю:', error))
+
+      return res.status(403).json({ success: false, message: 'Отсутствует активная подписка Плюс' })
+    } else {
+      discordUser
+        .send(`Вы успешно авторизовались через Яндекс! Подписка Плюс активна. Теперь можно использовать команды бота.`)
+        .catch(error => console.error('Не удалось отправить сообщение пользователю:', error))
+    }
   }
 
   return res.json({ success: true })
 })
 
-app.get('/health', (req, res) => {
+app.get('/health', (_, res) => {
   res.json({ status: 'ok', userTokensCount: tokenStore.size })
 })
 

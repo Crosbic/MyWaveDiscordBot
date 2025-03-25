@@ -2,9 +2,7 @@ import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js'
 
 import { TokenStoreService } from '../services/token-store.service.js'
 
-export const data = new SlashCommandBuilder()
-  .setName('login')
-  .setDescription('Авторизоваться через Яндекс')
+export const data = new SlashCommandBuilder().setName('login').setDescription('Авторизоваться через Яндекс')
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const userId = interaction.user.id

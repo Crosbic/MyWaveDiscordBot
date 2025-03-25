@@ -1,10 +1,9 @@
 export interface IUserData {
-  accessToken: string
-  userInfo: {
-    id: string
-    fullName: string
-    firstName: string
-    lastName: string
-    avatarUrl: string
-  }
+  id: string
+  fullName: string
+  firstName: string
+  lastName: string
+  nickName: string
+  avatarUrl: string
+  hasPlus: boolean
 }

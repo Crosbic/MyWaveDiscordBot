@@ -1,6 +1,6 @@
 {
   "name": "ym-player-bot",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "type": "module",
   "main": "dist/index.js",
   "license": "MIT",
@@ -13,6 +13,7 @@
   "dependencies": {
     "@types/body-parser": "^1.19.5",
     "@types/express": "^5.0.0",
+    "axios": "^1.8.4",
     "body-parser": "^1.20.3",
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",

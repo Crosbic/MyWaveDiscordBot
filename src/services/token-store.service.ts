@@ -1,3 +1,5 @@
+import { IUserData } from '../types/userData.js'
+
 export class TokenStoreService {
   private static instance: TokenStoreService
   private tokenMap = new Map<
@@ -17,7 +19,7 @@ export class TokenStoreService {
     return TokenStoreService.instance
   }
 
-  setToken(userId: string, accessToken: string, userInfo: any): void {
+  setToken(userId: string, accessToken: string, userInfo: IUserData): void {
     this.tokenMap.set(userId, { accessToken, userInfo })
   }
 
