@@ -2,6 +2,7 @@
 node_modules/
 dist/
 build/
+data/
 .env
 .DS_Store
 .pnp.*

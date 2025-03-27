@@ -39,6 +39,7 @@
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "@typescript-eslint/no-non-null-assertion": "off",
     "@typescript-eslint/no-explicit-any": "off",
+    "import/no-named-as-default": "off",
 
     // Удаление неиспользуемых импортов
     "@typescript-eslint/no-unused-vars": "off", // Отключаем стандартное правило

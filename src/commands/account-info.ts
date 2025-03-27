@@ -1,19 +1,19 @@
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js'
 
-import { TokenStoreService } from '../services/token-store.service.js'
+import { DatabaseService } from '../services/database.service.js'
 import { IUserData } from '../types/userData.js'
 
 export const data = new SlashCommandBuilder()
   .setName('account-info')
-  .setDescription('Отобразить данные, полученные от Яндекса')
+  .setDescription('Отобразить данные пользователя, полученные от Яндекса')
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const userDiscordId = interaction.user.id
-  const userData: IUserData | undefined = TokenStoreService.getInstance().getData(userDiscordId)?.userInfo
+  const userData: IUserData | undefined = DatabaseService.getInstance().getUserData(userDiscordId)?.userInfo
 
   if (!userData) {
     return interaction.reply({
-      content: 'Вы не авторизованы! Используйте команду /login для входа в Яндекс Музыку',
+      content: 'Вы не авторизованы! Используйте команду `/login` для входа через Яндекс.',
       ephemeral: true
     })
   }

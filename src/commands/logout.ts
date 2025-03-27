@@ -1,14 +1,14 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js'
 
-import { TokenStoreService } from '../services/token-store.service.js'
+import { DatabaseService } from '../services/database.service.js'
 
 export const data = new SlashCommandBuilder().setName('logout').setDescription('Выйти из аккаунта Яндекса')
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const userId = interaction.user.id
-  const tokenStore = TokenStoreService.getInstance()
+  const db = DatabaseService.getInstance()
 
-  if (!tokenStore.hasToken(userId)) {
+  if (!db.hasUserToken(userId)) {
     await interaction.reply({
       content: 'Вы не авторизованы через Яндекс. Используйте `/login` чтобы авторизоваться.',
       ephemeral: true
@@ -16,7 +16,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return
   }
 
-  tokenStore.removeToken(userId)
+  db.removeUserToken(userId)
 
   await interaction.reply({
     content: 'Вы успешно удалили данные Яндекс аккаунта у бота!',

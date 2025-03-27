@@ -9,12 +9,12 @@ import bodyParser from 'body-parser'
 import express from 'express'
 
 import config from './config.js'
-import { TokenStoreService } from './services/token-store.service.js'
+import { DatabaseService } from './services/database.service.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const tokenStore = TokenStoreService.getInstance()
+const db = DatabaseService.getInstance()
 
 declare module 'discord.js' {
   interface Client {
@@ -98,9 +98,9 @@ client.once(Events.ClientReady, readyClient => {
 client.login(config.token).then(_ => console.log('Логин по токену успешен'))
 
 const app = express()
-app.use(bodyParser.json())
-
 const API_PORT = process.env.API_PORT || 3001
+
+app.use(bodyParser.json())
 
 app.post('/auth/callback', async (req: any, res: any) => {
   const { userId, accessToken, userInfo } = req.body
@@ -121,7 +121,7 @@ app.post('/auth/callback', async (req: any, res: any) => {
   userInfo.hasPlus = response.data.result.plus.hasPlus
 
   if (userInfo.hasPlus) {
-    tokenStore.setToken(userId, accessToken, userInfo)
+    db.saveUserToken(userId, accessToken, userInfo)
     console.log(`Получен токен для пользователя ${userId} ${accessToken}`)
   }
 
@@ -143,9 +143,21 @@ app.post('/auth/callback', async (req: any, res: any) => {
 })
 
 app.get('/health', (_, res) => {
-  res.json({ status: 'ok', userTokensCount: tokenStore.size })
+  res.json({ status: 'ok', userTokensCount: db.userCount })
 })
 
 app.listen(API_PORT, () => {
   console.log(`API для авторизации запущен на порту ${API_PORT}`)
+})
+
+process.on('SIGINT', () => {
+  console.log('Получен сигнал завершения работы, закрываем соединение с базой данных...')
+  DatabaseService.getInstance().close()
+  process.exit(0)
+})
+
+process.on('SIGTERM', () => {
+  console.log('Получен сигнал завершения работы, закрываем соединение с базой данных...')
+  DatabaseService.getInstance().close()
+  process.exit(0)
 })
