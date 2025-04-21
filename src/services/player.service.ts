@@ -125,7 +125,7 @@ export class PlayerService {
       .setColor('#FFCC00')
       .setTitle('🎵 Сейчас играет')
       .setDescription('Загрузка трека...')
-      .setFooter({ text: 'Яндекс Музыка - Моя волна' })
+      .setFooter({ text: 'Яндекс Музыка' })
       .setTimestamp()
 
     // Создаем кнопки управления
@@ -452,7 +452,7 @@ export class PlayerService {
           .setColor('#FF0000')
           .setTitle('⏹️ Воспроизведение остановлено')
           .setDescription('Плеер был остановлен.')
-          .setFooter({ text: 'Яндекс Музыка - Моя волна' })
+          .setFooter({ text: 'Яндекс Музыка' })
           .setTimestamp()
 
         await playerState.embedMessage.edit({ embeds: [stoppedEmbed], components: [] })
@@ -513,7 +513,7 @@ export class PlayerService {
       .setColor('#FFCC00')
       .setTitle('🎵 Сейчас играет')
       .setDescription(`**${trackInfo.title}**\nИсполнитель: ${trackInfo.artist}\nАльбом: ${trackInfo.album}`)
-      .setFooter({ text: 'Яндекс Музыка - Моя волна' })
+      .setFooter({ text: 'Яндекс Музыка' })
       .setTimestamp()
 
     if (trackInfo.coverUrl) {
@@ -535,7 +535,7 @@ export class PlayerService {
       .setColor('#FF0000')
       .setTitle('⚠️ Ошибка')
       .setDescription(errorMessage)
-      .setFooter({ text: 'Яндекс Музыка - Моя волна' })
+      .setFooter({ text: 'Яндекс Музыка' })
       .setTimestamp()
 
     message.edit({ embeds: [errorEmbed] }).catch((error: Error) => {
@@ -562,7 +562,7 @@ export class PlayerService {
           .setDescription(
             `**${trackInfo.title}**\nИсполнитель: ${trackInfo.artist}\nАльбом: ${trackInfo.album}\n\nЗагрузка...`
           )
-          .setFooter({ text: 'Яндекс Музыка - Моя волна' })
+          .setFooter({ text: 'Яндекс Музыка' })
           .setTimestamp()
 
         if (trackInfo.coverUrl) {
@@ -707,12 +707,12 @@ export class PlayerService {
     // Флаг для отслеживания, находимся ли мы в процессе загрузки трека
     let isLoadingTrack = false
 
-    // Минимальное время воспроизведения трека в миллисекундах (10 секунд)
+    // Минимальное время воспроизведения трека в миллисекундах (5 секунд)
     // Если трек играл меньше этого времени, считаем что это было прерывание, а не завершение
-    const MIN_PLAY_TIME = 10000
+    const MIN_PLAY_TIME = 5000
 
     // Максимальное количество повторных попыток воспроизведения трека
-    const MAX_RETRY_COUNT = 3
+    const MAX_RETRY_COUNT = 1
 
     // Обработчик ошибок воспроизведения
     player.on('error', error => {
@@ -729,7 +729,7 @@ export class PlayerService {
           .setDescription(
             `Возникла проблема при воспроизведении трека "${playerState.currentTrack.title}". Пытаемся восстановить...`
           )
-          .setFooter({ text: 'Яндекс Музыка - Моя волна' })
+          .setFooter({ text: 'Яндекс Музыка' })
           .setTimestamp()
 
         embedMessage.edit({ embeds: [errorEmbed] }).catch((error: Error) => {
@@ -770,12 +770,52 @@ export class PlayerService {
       const playTime = playerState.trackStartTime ? currentTime - playerState.trackStartTime : 0
 
       // Если трек играл меньше минимального времени и у нас есть текущий трек,
+      // и это не первая попытка воспроизведения (чтобы избежать бесконечного цикла),
       // пытаемся повторно воспроизвести его
-      if (playTime < MIN_PLAY_TIME && playerState.currentTrack && playerState.retryCount < MAX_RETRY_COUNT) {
+      if (
+        playTime < MIN_PLAY_TIME &&
+        playTime > 0 &&
+        playerState.currentTrack &&
+        playerState.retryCount < MAX_RETRY_COUNT
+      ) {
         console.log(
           `Обнаружено прерывание воспроизведения трека: ${playerState.currentTrack.title} после ${playTime}ms`
         )
         console.log(`Повторная попытка воспроизведения (${playerState.retryCount + 1}/${MAX_RETRY_COUNT})`)
+
+        // Увеличиваем счетчик повторных попыток
+        playerState.retryCount++
+
+        // Если это последняя попытка, просто переходим к следующему треку
+        if (playerState.retryCount >= MAX_RETRY_COUNT) {
+          console.log(
+            `Достигнуто максимальное количество попыток для трека: ${playerState.currentTrack.title}, переходим к следующему треку`
+          )
+
+          // Сбрасываем флаг загрузки и переходим к следующему треку
+          isLoadingTrack = false
+
+          // Если в очереди есть треки, берем следующий
+          if (playerState.trackQueue.length > 0) {
+            const nextTrack = playerState.trackQueue.shift()
+            if (nextTrack) {
+              const nextTrackInfo = this.yandexMusicService.trackToTrackInfo(nextTrack)
+              this.playTrack(player, nextTrackInfo, accessToken, stationId, embedMessage)
+            }
+          } else {
+            // Если очередь пуста, пытаемся загрузить новые треки
+            loadMoreTracks().then(loaded => {
+              if (loaded && playerState.trackQueue.length > 0) {
+                const nextTrack = playerState.trackQueue.shift()
+                if (nextTrack) {
+                  const nextTrackInfo = this.yandexMusicService.trackToTrackInfo(nextTrack)
+                  this.playTrack(player, nextTrackInfo, accessToken, stationId, embedMessage)
+                }
+              }
+            })
+          }
+          return
+        }
 
         // Обновляем embed с информацией о повторной попытке
         if (embedMessage) {
@@ -783,7 +823,7 @@ export class PlayerService {
             .setColor('#FFA500') // Оранжевый цвет для временных ошибок
             .setTitle('🔄 Восстановление соединения')
             .setDescription(`Восстанавливаем воспроизведение трека "${playerState.currentTrack.title}"...`)
-            .setFooter({ text: 'Яндекс Музыка - Моя волна' })
+            .setFooter({ text: 'Яндекс Музыка' })
             .setTimestamp()
 
           if (playerState.currentTrack.coverUrl) {
@@ -795,15 +835,12 @@ export class PlayerService {
           })
         }
 
-        // Увеличиваем счетчик повторных попыток
-        playerState.retryCount++
-
-        // Ждем 3 секунды перед повторной попыткой
+        // Ждем 5 секунд перед повторной попыткой
         setTimeout(() => {
           if (playerState.currentTrack) {
             this.playTrack(player, playerState.currentTrack, accessToken, stationId, embedMessage)
           }
-        }, 3000)
+        }, 5000)
 
         return
       }
@@ -865,7 +902,7 @@ export class PlayerService {
                 .setColor('#FF0000')
                 .setTitle('⚠️ Воспроизведение завершено')
                 .setDescription('Не удалось загрузить новые треки.')
-                .setFooter({ text: 'Яндекс Музыка - Моя волна' })
+                .setFooter({ text: 'Яндекс Музыка' })
                 .setTimestamp()
 
               embedMessage.edit({ embeds: [finalEmbed], components: [] }).catch((error: Error) => {
