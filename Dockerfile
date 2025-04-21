@@ -14,10 +14,10 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libopus-dev \
     libsodium-dev \
-    python3 \
-    build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+USER node
 
 WORKDIR /app
 
@@ -27,10 +27,5 @@ RUN yarn install --production && yarn cache clean
 
 COPY --from=builder /build/dist ./dist
 COPY --from=builder /build/.env* ./
-
-RUN mkdir -p /app/data && \
-    chown -R node:node /app
-
-USER node
 
 CMD [ "yarn", "start" ]
