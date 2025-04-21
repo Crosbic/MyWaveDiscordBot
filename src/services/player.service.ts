@@ -243,10 +243,15 @@ export class PlayerService {
   private async handleLike(interaction: ButtonInteraction, guildId: string) {
     const playerState = this.playerStates.get(guildId)
     if (!playerState || !playerState.currentTrack) {
-      await interaction.reply({
-        content: 'Нет текущего трека для лайка.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Нет текущего трека для лайка.',
+          ephemeral: true
+        })
+      } catch (error) {
+        console.error('Ошибка при ответе на взаимодействие:', error)
+        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
+      }
       return
     }
 
@@ -258,23 +263,34 @@ export class PlayerService {
         playerState.currentTrack.id
       )
 
-      if (success) {
-        await interaction.reply({
-          content: `Трек "${playerState.currentTrack.title}" добавлен в список понравившихся!`,
-          ephemeral: true
-        })
-      } else {
-        await interaction.reply({
-          content: 'Не удалось добавить трек в список понравившихся.',
-          ephemeral: true
-        })
+      try {
+        if (success) {
+          await interaction.reply({
+            content: `Трек "${playerState.currentTrack.title}" добавлен в список понравившихся!`,
+            ephemeral: true
+          })
+        } else {
+          await interaction.reply({
+            content: 'Не удалось добавить трек в список понравившихся.',
+            ephemeral: true
+          })
+        }
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+        // Основное действие (лайк трека) уже выполнено
       }
     } catch (error) {
       console.error('Ошибка при отправке лайка:', error)
-      await interaction.reply({
-        content: 'Произошла ошибка при отправке лайка.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Произошла ошибка при отправке лайка.',
+          ephemeral: true
+        })
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие после ошибки лайка:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+      }
     }
   }
 
@@ -286,18 +302,28 @@ export class PlayerService {
     const player = this.players.get(guildId)
 
     if (!playerState || !player) {
-      await interaction.reply({
-        content: 'Плеер не найден или уже остановлен.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Плеер не найден или уже остановлен.',
+          ephemeral: true
+        })
+      } catch (error) {
+        console.error('Ошибка при ответе на взаимодействие:', error)
+        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
+      }
       return
     }
 
     if (playerState.previousTracks.length === 0) {
-      await interaction.reply({
-        content: 'Нет предыдущих треков для воспроизведения.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Нет предыдущих треков для воспроизведения.',
+          ephemeral: true
+        })
+      } catch (error) {
+        console.error('Ошибка при ответе на взаимодействие:', error)
+        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
+      }
       return
     }
 
@@ -329,17 +355,28 @@ export class PlayerService {
           playerState.embedMessage
         )
 
-        await interaction.reply({
-          content: 'Воспроизведение предыдущего трека.',
-          ephemeral: true
-        })
+        try {
+          await interaction.reply({
+            content: 'Воспроизведение предыдущего трека.',
+            ephemeral: true
+          })
+        } catch (replyError) {
+          console.error('Ошибка при ответе на взаимодействие:', replyError)
+          // Если взаимодействие истекло, просто логируем ошибку
+          // Основное действие (воспроизведение предыдущего трека) уже выполнено
+        }
       }
     } catch (error) {
       console.error('Ошибка при воспроизведении предыдущего трека:', error)
-      await interaction.reply({
-        content: 'Произошла ошибка при воспроизведении предыдущего трека.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Произошла ошибка при воспроизведении предыдущего трека.',
+          ephemeral: true
+        })
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие после ошибки воспроизведения:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+      }
     }
   }
 
@@ -351,10 +388,15 @@ export class PlayerService {
     const playerState = this.playerStates.get(guildId)
 
     if (!player || !playerState) {
-      await interaction.reply({
-        content: 'Плеер не найден или уже остановлен.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Плеер не найден или уже остановлен.',
+          ephemeral: true
+        })
+      } catch (error) {
+        console.error('Ошибка при ответе на взаимодействие:', error)
+        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
+      }
       return
     }
 
@@ -368,16 +410,27 @@ export class PlayerService {
         await playerState.embedMessage.edit({ components: [row] })
       }
 
-      await interaction.reply({
-        content: 'Воспроизведение приостановлено.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Воспроизведение приостановлено.',
+          ephemeral: true
+        })
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+        // Основное действие (пауза) уже выполнено
+      }
     } catch (error) {
       console.error('Ошибка при приостановке воспроизведения:', error)
-      await interaction.reply({
-        content: 'Произошла ошибка при приостановке воспроизведения.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Произошла ошибка при приостановке воспроизведения.',
+          ephemeral: true
+        })
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие после ошибки паузы:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+      }
     }
   }
 
@@ -389,10 +442,15 @@ export class PlayerService {
     const playerState = this.playerStates.get(guildId)
 
     if (!player || !playerState) {
-      await interaction.reply({
-        content: 'Плеер не найден или уже остановлен.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Плеер не найден или уже остановлен.',
+          ephemeral: true
+        })
+      } catch (error) {
+        console.error('Ошибка при ответе на взаимодействие:', error)
+        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
+      }
       return
     }
 
@@ -406,16 +464,27 @@ export class PlayerService {
         await playerState.embedMessage.edit({ components: [row] })
       }
 
-      await interaction.reply({
-        content: 'Воспроизведение возобновлено.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Воспроизведение возобновлено.',
+          ephemeral: true
+        })
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+        // Основное действие (возобновление воспроизведения) уже выполнено
+      }
     } catch (error) {
       console.error('Ошибка при возобновлении воспроизведения:', error)
-      await interaction.reply({
-        content: 'Произошла ошибка при возобновлении воспроизведения.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Произошла ошибка при возобновлении воспроизведения.',
+          ephemeral: true
+        })
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие после ошибки возобновления:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+      }
     }
   }
 
@@ -428,10 +497,15 @@ export class PlayerService {
     const playerState = this.playerStates.get(guildId)
 
     if (!player || !connection || !playerState) {
-      await interaction.reply({
-        content: 'Плеер не найден или уже остановлен.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Плеер не найден или уже остановлен.',
+          ephemeral: true
+        })
+      } catch (error) {
+        console.error('Ошибка при ответе на взаимодействие:', error)
+        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
+      }
       return
     }
 
@@ -458,16 +532,27 @@ export class PlayerService {
         await playerState.embedMessage.edit({ embeds: [stoppedEmbed], components: [] })
       }
 
-      await interaction.reply({
-        content: 'Воспроизведение остановлено.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Воспроизведение остановлено.',
+          ephemeral: true
+        })
+      } catch (error) {
+        console.error('Ошибка при ответе на взаимодействие:', error)
+        // Если взаимодействие истекло, просто логируем ошибку
+        // Основные действия по остановке плеера уже выполнены
+      }
     } catch (error) {
       console.error('Ошибка при остановке воспроизведения:', error)
-      await interaction.reply({
-        content: 'Произошла ошибка при остановке воспроизведения.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Произошла ошибка при остановке воспроизведения.',
+          ephemeral: true
+        })
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие после ошибки остановки:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+      }
     }
   }
 
@@ -479,10 +564,15 @@ export class PlayerService {
     const playerState = this.playerStates.get(guildId)
 
     if (!player || !playerState) {
-      await interaction.reply({
-        content: 'Плеер не найден или уже остановлен.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Плеер не найден или уже остановлен.',
+          ephemeral: true
+        })
+      } catch (error) {
+        console.error('Ошибка при ответе на взаимодействие:', error)
+        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
+      }
       return
     }
 
@@ -490,16 +580,27 @@ export class PlayerService {
       // Эмитируем событие Idle, чтобы запустить следующий трек
       player.emit(AudioPlayerStatus.Idle)
 
-      await interaction.reply({
-        content: 'Переход к следующему треку.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Переход к следующему треку.',
+          ephemeral: true
+        })
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+        // Основное действие (переход к следующему треку) уже выполнено
+      }
     } catch (error) {
       console.error('Ошибка при переходе к следующему треку:', error)
-      await interaction.reply({
-        content: 'Произошла ошибка при переходе к следующему треку.',
-        ephemeral: true
-      })
+      try {
+        await interaction.reply({
+          content: 'Произошла ошибка при переходе к следующему треку.',
+          ephemeral: true
+        })
+      } catch (replyError) {
+        console.error('Ошибка при ответе на взаимодействие после ошибки перехода:', replyError)
+        // Если взаимодействие истекло, просто логируем ошибку
+      }
     }
   }
 
@@ -707,16 +808,36 @@ export class PlayerService {
     // Флаг для отслеживания, находимся ли мы в процессе загрузки трека
     let isLoadingTrack = false
 
-    // Минимальное время воспроизведения трека в миллисекундах (5 секунд)
+    // Минимальное время воспроизведения трека в миллисекундах (3 секунды)
     // Если трек играл меньше этого времени, считаем что это было прерывание, а не завершение
-    const MIN_PLAY_TIME = 5000
+    const MIN_PLAY_TIME = 3000
 
     // Максимальное количество повторных попыток воспроизведения трека
-    const MAX_RETRY_COUNT = 1
+    const MAX_RETRY_COUNT = 3
+
+    // Добавляем обработчик для отслеживания состояния плеера
+    player.on(AudioPlayerStatus.Playing, () => {
+      console.log('Плеер перешел в состояние Playing')
+
+      // Получаем текущее состояние плеера
+      const playerState = this.playerStates.get(guildId)
+      if (playerState && playerState.currentTrack) {
+        console.log(`Трек "${playerState.currentTrack.title}" успешно начал воспроизведение`)
+      }
+    })
+
+    player.on(AudioPlayerStatus.Buffering, () => {
+      console.log('Плеер перешел в состояние Buffering')
+    })
+
+    player.on(AudioPlayerStatus.AutoPaused, () => {
+      console.log('Плеер перешел в состояние AutoPaused')
+    })
 
     // Обработчик ошибок воспроизведения
     player.on('error', error => {
       console.error('Ошибка воспроизведения:', error)
+      console.error('Детали ошибки:', JSON.stringify(error, null, 2))
 
       const playerState = this.playerStates.get(guildId)
       if (!playerState || !playerState.currentTrack) return
@@ -729,7 +850,7 @@ export class PlayerService {
           .setDescription(
             `Возникла проблема при воспроизведении трека "${playerState.currentTrack.title}". Пытаемся восстановить...`
           )
-          .setFooter({ text: 'Яндекс Музыка' })
+          .setFooter({ text: 'Яндекс Музыка - Моя волна' })
           .setTimestamp()
 
         embedMessage.edit({ embeds: [errorEmbed] }).catch((error: Error) => {
@@ -737,7 +858,7 @@ export class PlayerService {
         })
       }
 
-      // Пытаемся повторно воспроизвести текущий трек через 3 секунды
+      // Пытаемся повторно воспроизвести текущий трек через 5 секунд
       setTimeout(() => {
         if (playerState.retryCount < MAX_RETRY_COUNT && playerState.currentTrack) {
           console.log(
@@ -751,7 +872,7 @@ export class PlayerService {
           isLoadingTrack = false
           player.emit(AudioPlayerStatus.Idle)
         }
-      }, 3000)
+      }, 5000)
     })
 
     // Обработчик для воспроизведения следующего трека
@@ -835,12 +956,12 @@ export class PlayerService {
           })
         }
 
-        // Ждем 5 секунд перед повторной попыткой
+        // Ждем 10 секунд перед повторной попыткой
         setTimeout(() => {
           if (playerState.currentTrack) {
             this.playTrack(player, playerState.currentTrack, accessToken, stationId, embedMessage)
           }
-        }, 5000)
+        }, 10000)
 
         return
       }
