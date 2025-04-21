@@ -47,6 +47,7 @@ export interface PlayerState {
   trackStartTime: number | null // Время начала воспроизведения текущего трека
   retryCount: number // Счетчик повторных попыток воспроизведения текущего трека
   lastTrackId: string | null // ID последнего воспроизведенного трека
+  skipRequested: boolean // Флаг, указывающий, что пользователь запросил переход к следующему треку
 }
 
 export class PlayerService {
@@ -162,7 +163,8 @@ export class PlayerService {
       embedMessage,
       trackStartTime: null,
       retryCount: 0,
-      lastTrackId: null
+      lastTrackId: null,
+      skipRequested: false // Инициализируем флаг пропуска трека
     })
 
     return { player, connection, embedMessage }
@@ -579,6 +581,10 @@ export class PlayerService {
     }
 
     try {
+      // Устанавливаем флаг, что пользователь запросил переход к следующему треку
+      playerState.skipRequested = true
+      console.log('Пользователь запросил переход к следующему треку')
+
       // Эмитируем событие Idle, чтобы запустить следующий трек
       player.emit(AudioPlayerStatus.Idle)
 
@@ -693,13 +699,14 @@ export class PlayerService {
 
       // Создаем ресурс напрямую из URL
       console.log(`Создание ресурса для трека: ${trackInfo.title}`)
-      console.log(`Stream URL: ${streamUrl}`) // Логируем только начало URL для безопасности
+      console.log(`Stream URL: ${streamUrl}`)
 
       // Добавляем дополнительные опции для улучшения стабильности
+      console.log('Создаем аудио ресурс с типом Arbitrary')
       const resource = createAudioResource(streamUrl, {
-        inputType: StreamType.Arbitrary,
+        inputType: StreamType.Arbitrary, // Возвращаем Arbitrary, так как формат может быть не OggOpus
         inlineVolume: true,
-        silencePaddingFrames: 5 // Добавляем небольшую паузу в начале для стабильности
+        silencePaddingFrames: 10
       })
 
       // Устанавливаем громкость на 80% для предотвращения искажений
@@ -747,11 +754,13 @@ export class PlayerService {
       // Воспроизводим аудио с небольшой задержкой для стабильности
       console.log(`Начало воспроизведения трека: ${trackInfo.title}`)
 
-      // Небольшая задержка перед воспроизведением для стабильности
+      // Увеличиваем задержку перед воспроизведением для стабильности
+      console.log('Ожидаем 3 секунды перед воспроизведением...')
       setTimeout(() => {
+        console.log('Запускаем воспроизведение...')
         player.play(resource)
         console.log(`Команда воспроизведения отправлена для трека: ${trackInfo.title}`)
-      }, 500)
+      }, 3000)
 
       // Обновляем embed с информацией о треке
       this.updateEmbed(embedMessage, trackInfo)
@@ -825,12 +834,12 @@ export class PlayerService {
     // Флаг для отслеживания, находимся ли мы в процессе загрузки трека
     let isLoadingTrack = false
 
-    // Минимальное время воспроизведения трека в миллисекундах (3 секунды)
+    // Минимальное время воспроизведения трека в миллисекундах (10 секунд)
     // Если трек играл меньше этого времени, считаем что это было прерывание, а не завершение
-    const MIN_PLAY_TIME = 3000
+    const MIN_PLAY_TIME = 10000
 
     // Максимальное количество повторных попыток воспроизведения трека
-    const MAX_RETRY_COUNT = 3
+    const MAX_RETRY_COUNT = 5
 
     // Добавляем обработчик для отслеживания состояния плеера
     player.on(AudioPlayerStatus.Playing, () => {
@@ -907,10 +916,17 @@ export class PlayerService {
       const currentTime = Date.now()
       const playTime = playerState.trackStartTime ? currentTime - playerState.trackStartTime : 0
 
+      // Проверяем, был ли запрошен пропуск трека пользователем
+      if (playerState.skipRequested) {
+        console.log('Пользователь запросил переход к следующему треку, пропускаем проверку времени воспроизведения')
+        // Сбрасываем флаг пропуска трека
+        playerState.skipRequested = false
+      }
       // Если трек играл меньше минимального времени и у нас есть текущий трек,
       // и это не первая попытка воспроизведения (чтобы избежать бесконечного цикла),
+      // и пользователь не запросил пропуск трека,
       // пытаемся повторно воспроизвести его
-      if (
+      else if (
         playTime < MIN_PLAY_TIME &&
         playTime > 0 &&
         playerState.currentTrack &&
