@@ -4,6 +4,17 @@ console.log('Инициализация аудио-движка...')
 process.env.OPUS_ENGINE = 'opusscript'
 console.log('Используется аудио-движок: opusscript')
 
+// Динамически импортируем opusscript
+let opusscript: any = null
+try {
+  // Используем динамический импорт для ESM
+  const opusModule = await import('opusscript')
+  opusscript = new opusModule.default(48000, 2, 2048)
+  console.log('opusscript успешно загружен и инициализирован')
+} catch (error) {
+  console.error('Ошибка при загрузке opusscript:', error)
+}
+
 import {
   AudioPlayerStatus,
   createAudioPlayer,
@@ -708,12 +719,11 @@ export class PlayerService {
       console.log('Создаем аудио ресурс с типом Arbitrary')
       console.log('Используемый OPUS_ENGINE:', process.env.OPUS_ENGINE)
 
-      try {
-        // Проверяем доступность opusscript
-        const opusscript = require('opusscript')
-        console.log('opusscript успешно загружен:', opusscript ? 'да' : 'нет')
-      } catch (error) {
-        console.error('Ошибка при загрузке opusscript:', error)
+      // Проверяем, успешно ли инициализирован opusscript
+      if (opusscript) {
+        console.log('Используем инициализированный opusscript для обработки аудио')
+      } else {
+        console.warn('opusscript не был инициализирован, могут возникнуть проблемы с воспроизведением')
       }
 
       // Создаем ресурс с дополнительными настройками для стабильности
@@ -899,12 +909,11 @@ export class PlayerService {
       // Логируем информацию о текущем состоянии аудио-движка
       console.log('Текущий OPUS_ENGINE при ошибке:', process.env.OPUS_ENGINE)
 
-      try {
-        // Проверяем доступность opusscript при ошибке
-        const opusscript = require('opusscript')
-        console.log('opusscript доступен при ошибке:', opusscript ? 'да' : 'нет')
-      } catch (opusError) {
-        console.error('Ошибка при проверке opusscript:', opusError)
+      // Проверяем, успешно ли инициализирован opusscript
+      if (opusscript) {
+        console.log('Используем инициализированный opusscript для обработки аудио при ошибке')
+      } else {
+        console.warn('opusscript не был инициализирован, могут возникнуть проблемы с воспроизведением')
       }
 
       const playerState = this.playerStates.get(guildId)
