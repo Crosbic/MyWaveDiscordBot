@@ -6,7 +6,7 @@ COPY . .
 
 RUN yarn install && yarn build
 
-FROM node:lts-slim
+FROM node:lts-bullseye
 
 RUN apt-get update && apt-get install -y \
     ffmpeg \
@@ -14,6 +14,14 @@ RUN apt-get update && apt-get install -y \
     libsodium-dev \
     python3 \
     build-essential \
+    libtool-bin \
+    autoconf \
+    automake \
+    libasound2-dev \
+    libavformat-dev \
+    libavcodec-dev \
+    libavutil-dev \
+    libavfilter-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
