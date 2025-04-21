@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     libopus-dev \
     libsodium-dev \
     python3 \
+    build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

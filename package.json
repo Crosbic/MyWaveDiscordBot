@@ -1,6 +1,6 @@
 {
   "name": "ym-player-bot",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "type": "module",
   "main": "dist/index.js",
   "license": "MIT",
@@ -19,7 +19,9 @@
     "dotenv": "^16.3.1",
     "express": "^4.21.2",
     "ffmpeg-static": "^5.2.0",
-    "node-fetch": "^3.3.2"
+    "libsodium-wrappers": "^0.7.13",
+    "node-fetch": "^3.3.2",
+    "opusscript": "^0.1.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

@@ -1,3 +1,5 @@
+process.env.OPUS_ENGINE = 'opusscript'
+
 import {
   AudioPlayerStatus,
   createAudioPlayer,
@@ -691,7 +693,7 @@ export class PlayerService {
 
       // Создаем ресурс напрямую из URL
       console.log(`Создание ресурса для трека: ${trackInfo.title}`)
-      console.log(`Stream URL: ${streamUrl.substring(0, 100)}...`) // Логируем только начало URL для безопасности
+      console.log(`Stream URL: ${streamUrl}`) // Логируем только начало URL для безопасности
 
       // Добавляем дополнительные опции для улучшения стабильности
       const resource = createAudioResource(streamUrl, {
