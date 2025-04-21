@@ -1,4 +1,8 @@
+// Устанавливаем OPUS_ENGINE в opusscript и добавляем логирование
+console.log('Движок до инициализации: ', process.env.OPUS_ENGINE)
+console.log('Инициализация аудио-движка...')
 process.env.OPUS_ENGINE = 'opusscript'
+console.log('Используется аудио-движок: opusscript')
 
 import {
   AudioPlayerStatus,
@@ -16,7 +20,6 @@ import {
 import {
   ChatInputCommandInteraction,
   EmbedBuilder,
-  GuildMember,
   Message,
   ActionRowBuilder,
   ButtonBuilder,
@@ -44,10 +47,10 @@ export interface PlayerState {
   userId: string
   stationId: string
   embedMessage: Message | undefined
-  trackStartTime: number | null // Время начала воспроизведения текущего трека
-  retryCount: number // Счетчик повторных попыток воспроизведения текущего трека
-  lastTrackId: string | null // ID последнего воспроизведенного трека
-  skipRequested: boolean // Флаг, указывающий, что пользователь запросил переход к следующему треку
+  trackStartTime: number | null
+  retryCount: number
+  lastTrackId: string | null
+  skipRequested: boolean
 }
 
 export class PlayerService {
@@ -703,11 +706,24 @@ export class PlayerService {
 
       // Добавляем дополнительные опции для улучшения стабильности
       console.log('Создаем аудио ресурс с типом Arbitrary')
+      console.log('Используемый OPUS_ENGINE:', process.env.OPUS_ENGINE)
+
+      try {
+        // Проверяем доступность opusscript
+        const opusscript = require('opusscript')
+        console.log('opusscript успешно загружен:', opusscript ? 'да' : 'нет')
+      } catch (error) {
+        console.error('Ошибка при загрузке opusscript:', error)
+      }
+
+      // Создаем ресурс с дополнительными настройками для стабильности
       const resource = createAudioResource(streamUrl, {
-        inputType: StreamType.Arbitrary, // Возвращаем Arbitrary, так как формат может быть не OggOpus
+        inputType: StreamType.Arbitrary, // Используем Arbitrary для любого формата
         inlineVolume: true,
-        silencePaddingFrames: 10
+        silencePaddingFrames: 5 // Уменьшаем количество кадров тишины
       })
+
+      console.log('Аудио ресурс успешно создан:', resource ? 'да' : 'нет')
 
       // Устанавливаем громкость на 80% для предотвращения искажений
       if (resource.volume) {
@@ -755,12 +771,27 @@ export class PlayerService {
       console.log(`Начало воспроизведения трека: ${trackInfo.title}`)
 
       // Увеличиваем задержку перед воспроизведением для стабильности
-      console.log('Ожидаем 3 секунды перед воспроизведением...')
+      console.log('Ожидаем 5 секунд перед воспроизведением...')
+
+      // Добавляем обработчик для отслеживания состояния ресурса
+      resource.playStream.on('error', err => {
+        console.error('Ошибка в потоке воспроизведения:', err)
+      })
+
       setTimeout(() => {
-        console.log('Запускаем воспроизведение...')
-        player.play(resource)
-        console.log(`Команда воспроизведения отправлена для трека: ${trackInfo.title}`)
-      }, 3000)
+        try {
+          console.log('Запускаем воспроизведение...')
+          player.play(resource)
+          console.log(`Команда воспроизведения отправлена для трека: ${trackInfo.title}`)
+        } catch (error) {
+          // Приводим ошибку к типу Error для доступа к свойству message
+          const playError = error instanceof Error ? error : new Error(String(error))
+          console.error('Ошибка при запуске воспроизведения:', playError)
+          if (embedMessage) {
+            this.updateEmbedWithError(embedMessage, `Ошибка при запуске воспроизведения: ${playError.message}`)
+          }
+        }
+      }, 5000) // Увеличиваем задержку до 5 секунд
 
       // Обновляем embed с информацией о треке
       this.updateEmbed(embedMessage, trackInfo)
@@ -860,13 +891,27 @@ export class PlayerService {
       console.log('Плеер перешел в состояние AutoPaused')
     })
 
-    // Обработчик ошибок воспроизведения
+    // Обработчик ошибок воспроизведения с улучшенным логированием
     player.on('error', error => {
       console.error('Ошибка воспроизведения:', error)
       console.error('Детали ошибки:', JSON.stringify(error, null, 2))
 
+      // Логируем информацию о текущем состоянии аудио-движка
+      console.log('Текущий OPUS_ENGINE при ошибке:', process.env.OPUS_ENGINE)
+
+      try {
+        // Проверяем доступность opusscript при ошибке
+        const opusscript = require('opusscript')
+        console.log('opusscript доступен при ошибке:', opusscript ? 'да' : 'нет')
+      } catch (opusError) {
+        console.error('Ошибка при проверке opusscript:', opusError)
+      }
+
       const playerState = this.playerStates.get(guildId)
-      if (!playerState || !playerState.currentTrack) return
+      if (!playerState || !playerState.currentTrack) {
+        console.log('Не найдено состояние плеера или текущий трек при ошибке')
+        return
+      }
 
       // Обновляем embed с информацией об ошибке
       if (embedMessage) {
