@@ -691,9 +691,19 @@ export class PlayerService {
 
       // Создаем ресурс напрямую из URL
       console.log(`Создание ресурса для трека: ${trackInfo.title}`)
+      console.log(`Stream URL: ${streamUrl.substring(0, 100)}...`) // Логируем только начало URL для безопасности
+
+      // Добавляем дополнительные опции для улучшения стабильности
       const resource = createAudioResource(streamUrl, {
-        inputType: StreamType.Arbitrary
+        inputType: StreamType.Arbitrary,
+        inlineVolume: true,
+        silencePaddingFrames: 5 // Добавляем небольшую паузу в начале для стабильности
       })
+
+      // Устанавливаем громкость на 80% для предотвращения искажений
+      if (resource.volume) {
+        resource.volume.setVolume(0.8)
+      }
 
       // Сохраняем ресурс и информацию о текущем треке
       const guildId = embedMessage?.guild?.id
@@ -732,9 +742,14 @@ export class PlayerService {
         }
       }
 
-      // Воспроизводим аудио
+      // Воспроизводим аудио с небольшой задержкой для стабильности
       console.log(`Начало воспроизведения трека: ${trackInfo.title}`)
-      player.play(resource)
+
+      // Небольшая задержка перед воспроизведением для стабильности
+      setTimeout(() => {
+        player.play(resource)
+        console.log(`Команда воспроизведения отправлена для трека: ${trackInfo.title}`)
+      }, 500)
 
       // Обновляем embed с информацией о треке
       this.updateEmbed(embedMessage, trackInfo)
