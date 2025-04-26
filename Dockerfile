@@ -9,6 +9,7 @@ RUN yarn install && yarn build
 FROM node:lts-slim
 
 RUN apt-get update && apt-get install -y \
+    curl \
     ffmpeg \
     libopus-dev \
     libsodium-dev \
