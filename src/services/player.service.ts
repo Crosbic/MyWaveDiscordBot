@@ -1,4 +1,32 @@
 // Устанавливаем OPUS_ENGINE в opusscript и добавляем логирование
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonInteraction,
+  ButtonStyle,
+  ChatInputCommandInteraction,
+  ComponentType,
+  EmbedBuilder,
+  Message
+} from 'discord.js'
+
+import {
+  AudioPlayer,
+  AudioPlayerStatus,
+  AudioResource,
+  createAudioPlayer,
+  createAudioResource,
+  entersState,
+  joinVoiceChannel,
+  NoSubscriberBehavior,
+  StreamType,
+  VoiceConnection,
+  VoiceConnectionStatus
+} from '@discordjs/voice'
+
+import { ITrackInfo, YandexMusicService } from './yandex-music.service.js'
+import { IYandexTrack } from '../types/yandexTrack.js'
+
 console.log('Движок до инициализации: ', process.env.OPUS_ENGINE)
 console.log('Инициализация аудио-движка...')
 process.env.OPUS_ENGINE = 'opusscript'
@@ -14,32 +42,6 @@ try {
 } catch (error) {
   console.error('Ошибка при загрузке opusscript:', error)
 }
-
-import {
-  AudioPlayerStatus,
-  createAudioPlayer,
-  createAudioResource,
-  joinVoiceChannel,
-  VoiceConnectionStatus,
-  entersState,
-  NoSubscriberBehavior,
-  StreamType,
-  AudioPlayer,
-  VoiceConnection,
-  AudioResource
-} from '@discordjs/voice'
-import {
-  ChatInputCommandInteraction,
-  EmbedBuilder,
-  Message,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ButtonInteraction,
-  ComponentType
-} from 'discord.js'
-import { YandexMusicService, ITrackInfo } from './yandex-music.service.js'
-import { IYandexTrack } from '../types/yandexTrack.js'
 
 export interface PlayerOptions {
   interaction: ChatInputCommandInteraction
@@ -114,7 +116,8 @@ export class PlayerService {
     // Ожидаем успешного подключения к каналу
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 5_000)
-    } catch (connectionError) {
+    } catch (error) {
+      console.log(error)
       connection.destroy()
       throw new Error('Не удалось подключиться к голосовому каналу')
     }
@@ -129,6 +132,7 @@ export class PlayerService {
         // Если мы дошли до этой точки, значит соединение пытается восстановиться
       } catch (error) {
         // Если мы дошли до этой точки, соединение не может быть восстановлено
+        console.log(error)
         connection.destroy()
         this.players.delete(guildId)
         this.connections.delete(guildId)
@@ -188,7 +192,7 @@ export class PlayerService {
    * Создание кнопок управления
    */
   private createControlButtons(isPlaying: boolean): ActionRowBuilder<ButtonBuilder> {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('like').setLabel('👍').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('previous').setLabel('⏮️').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
@@ -198,8 +202,6 @@ export class PlayerService {
       new ButtonBuilder().setCustomId('stop').setLabel('⏹️').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('next').setLabel('⏭️').setStyle(ButtonStyle.Secondary)
     )
-
-    return row
   }
 
   /**
