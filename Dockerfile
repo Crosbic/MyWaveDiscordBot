@@ -4,7 +4,7 @@ WORKDIR /build
 
 COPY . .
 
-RUN yarn install && yarn build && yarn deploy
+RUN yarn install && yarn build
 
 FROM node:lts-slim
 
