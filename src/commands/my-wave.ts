@@ -93,6 +93,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const { accessToken } = userData
     const stationId = 'user:onyourwave'
 
+    // Проверяем, существует ли уже активный плеер для данного сервера
+    const playerStatus = playerService.isPlayerActive(interaction.guild.id)
+    if (playerStatus.active && playerStatus.discordUserId !== interaction.user.id) {
+      await interaction.followUp({
+        content:
+          'В данный момент плеер уже используется другим пользователем. Дождитесь, пока он остановит воспроизведение.',
+        ephemeral: true
+      })
+      return
+    }
+
     // Создаем плеер
     const { player, connection, embedMessage } = await playerService.createPlayer({
       interaction,

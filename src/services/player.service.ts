@@ -1,10 +1,8 @@
-// Устанавливаем OPUS_ENGINE в opusscript и добавляем логирование
 import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonInteraction,
   ButtonStyle,
-  ChatInputCommandInteraction,
   ComponentType,
   EmbedBuilder,
   Message
@@ -24,8 +22,11 @@ import {
   VoiceConnectionStatus
 } from '@discordjs/voice'
 
-import { ITrackInfo, YandexMusicService } from './yandex-music.service.js'
+import { YandexMusicService } from './yandex-music.service.js'
 import { IYandexTrack } from '../types/yandexTrack.js'
+import { IPlayerState } from '../types/playerState.js'
+import { IPlayerOptions } from '../types/playerOptions.js'
+import { ITrackInfo } from '../types/trackInfo.js'
 
 // Устанавливаем OPUS_ENGINE в opusscript
 process.env.OPUS_ENGINE = 'opusscript'
@@ -40,35 +41,12 @@ try {
   console.error('Ошибка при загрузке opusscript:', error)
 }
 
-export interface PlayerOptions {
-  interaction: ChatInputCommandInteraction
-  voiceChannel: any
-  accessToken: string
-  userId: string
-  stationId: string
-}
-
-export interface PlayerState {
-  isPlaying: boolean
-  currentTrack: ITrackInfo | null
-  previousTracks: IYandexTrack[]
-  trackQueue: IYandexTrack[]
-  accessToken: string
-  userId: string
-  stationId: string
-  embedMessage: Message | undefined
-  trackStartTime: number | null
-  retryCount: number
-  lastTrackId: string | null
-  skipRequested: boolean
-}
-
 export class PlayerService {
   private static instance: PlayerService
   private yandexMusicService: YandexMusicService
   private players: Map<string, AudioPlayer> = new Map()
   private connections: Map<string, VoiceConnection> = new Map()
-  private playerStates: Map<string, PlayerState> = new Map()
+  private playerStates: Map<string, IPlayerState> = new Map()
   private currentResources: Map<string, AudioResource> = new Map()
 
   private constructor() {
@@ -83,9 +61,48 @@ export class PlayerService {
   }
 
   /**
+   * Проверяет, существует ли активный плеер для данного сервера
+   * @param guildId ID сервера
+   * @returns Объект с информацией о плеере или null, если плеер не существует
+   */
+  public isPlayerActive(guildId: string): { active: boolean; discordUserId?: string } {
+    const player = this.players.get(guildId)
+    const playerState = this.playerStates.get(guildId)
+
+    if (!player || !playerState) {
+      return { active: false }
+    }
+
+    return {
+      active: true,
+      discordUserId: playerState.discordUserId
+    }
+  }
+
+  /**
+   * Добавляет трек в очередь существующего плеера
+   * @param guildId ID сервера
+   * @param track Трек для добавления в очередь
+   * @returns true, если трек успешно добавлен, false, если плеер не существует
+   */
+  public addTrackToQueue(guildId: string, track: IYandexTrack): boolean {
+    const playerState = this.playerStates.get(guildId)
+
+    if (!playerState) {
+      return false
+    }
+
+    // Добавляем трек в очередь
+    playerState.trackQueue.push(track)
+    console.log(`Трек "${track.title}" добавлен в очередь`)
+
+    return true
+  }
+
+  /**
    * Создание и настройка плеера для воспроизведения треков
    */
-  public async createPlayer(options: PlayerOptions): Promise<{
+  public async createPlayer(options: IPlayerOptions): Promise<{
     player: AudioPlayer
     connection: VoiceConnection
     embedMessage: Message | undefined
@@ -174,12 +191,15 @@ export class PlayerService {
       trackQueue: [],
       accessToken,
       userId,
+      discordUserId: interaction.user.id,
       stationId,
       embedMessage,
       trackStartTime: null,
       retryCount: 0,
       lastTrackId: null,
-      skipRequested: false // Инициализируем флаг пропуска трека
+      skipRequested: false,
+      trackDuration: null,
+      progressUpdateInterval: null
     })
 
     return { player, connection, embedMessage }
@@ -218,6 +238,15 @@ export class PlayerService {
       if (!player || !playerState) {
         await interaction.reply({
           content: 'Плеер не найден или уже остановлен.',
+          ephemeral: true
+        })
+        return
+      }
+
+      // Проверяем, что кнопку нажал тот же пользователь, который запустил воспроизведение
+      if (interaction.user.id !== playerState.discordUserId) {
+        await interaction.reply({
+          content: 'Только пользователь, запустивший воспроизведение, может управлять плеером.',
           ephemeral: true
         })
         return
@@ -273,6 +302,15 @@ export class PlayerService {
     }
 
     try {
+      // Проверяем, что у трека есть ID
+      if (!playerState.currentTrack.id) {
+        await interaction.reply({
+          content: `Не удалось добавить трек "${playerState.currentTrack.title}" в список понравившихся: ID трека не определен.`,
+          ephemeral: true
+        })
+        return
+      }
+
       // Отправляем запрос на добавление трека в список понравившихся
       const success = await this.yandexMusicService.likeTrack(
         playerState.accessToken,
@@ -626,15 +664,62 @@ export class PlayerService {
   }
 
   /**
+   * Создает полоску прогресса для отображения текущего положения воспроизведения
+   * @param currentTime Текущее время воспроизведения в миллисекундах
+   * @param totalTime Общая длительность трека в миллисекундах
+   * @returns Строка с полоской прогресса
+   */
+  private createProgressBar(currentTime: number, totalTime: number): string {
+    // Если длительность трека неизвестна, возвращаем пустую строку
+    if (!totalTime) return ''
+
+    const progressBarLength = 20 // Длина полоски прогресса в символах
+    const progress = Math.min(Math.max(currentTime / totalTime, 0), 1) // Прогресс от 0 до 1
+    const filledLength = Math.round(progressBarLength * progress)
+    const emptyLength = progressBarLength - filledLength
+
+    // Создаем полоску прогресса
+    const filledBar = '▓'.repeat(filledLength)
+    const emptyBar = '░'.repeat(emptyLength)
+
+    // Форматируем время в формате MM:SS
+    const formatTime = (ms: number) => {
+      const totalSeconds = Math.floor(ms / 1000)
+      const minutes = Math.floor(totalSeconds / 60)
+      const seconds = totalSeconds % 60
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`
+    }
+
+    return `${formatTime(currentTime)} [${filledBar}${emptyBar}] ${formatTime(totalTime)}`
+  }
+
+  /**
    * Обновление embed с информацией о треке
    */
   public updateEmbed(message: Message | undefined, trackInfo: ITrackInfo) {
     if (!message) return
 
+    const guildId = message.guild?.id
+    if (!guildId) return
+
+    const playerState = this.playerStates.get(guildId)
+    if (!playerState) return
+
+    // Получаем текущее время воспроизведения
+    const currentTime = playerState.trackStartTime ? Date.now() - playerState.trackStartTime : 0
+
+    // Создаем полоску прогресса, если известна длительность трека
+    let progressBar = ''
+    if (playerState.trackDuration) {
+      progressBar = this.createProgressBar(currentTime, playerState.trackDuration)
+    }
+
     const updatedEmbed = new EmbedBuilder()
       .setColor('#FFCC00')
       .setTitle('🎵 Сейчас играет')
-      .setDescription(`**${trackInfo.title}**\nИсполнитель: ${trackInfo.artist}\nАльбом: ${trackInfo.album}`)
+      .setDescription(
+        `**${trackInfo.title}**\nИсполнитель: ${trackInfo.artist}\nАльбом: ${trackInfo.album}${progressBar ? `\n\n${progressBar}` : ''}`
+      )
       .setFooter({ text: 'Яндекс Музыка' })
       .setTimestamp()
 
@@ -645,6 +730,38 @@ export class PlayerService {
     message.edit({ embeds: [updatedEmbed] }).catch((error: Error) => {
       console.error('Ошибка при обновлении embed:', error)
     })
+  }
+
+  /**
+   * Запускает интервал для обновления прогресса воспроизведения
+   * @param guildId ID сервера
+   */
+  private startProgressUpdateInterval(guildId: string) {
+    const playerState = this.playerStates.get(guildId)
+    if (!playerState || !playerState.embedMessage) return
+
+    // Очищаем предыдущий интервал, если он существует
+    if (playerState.progressUpdateInterval) {
+      clearInterval(playerState.progressUpdateInterval)
+    }
+
+    playerState.progressUpdateInterval = setInterval(() => {
+      if (playerState.isPlaying && playerState.currentTrack && playerState.embedMessage) {
+        this.updateEmbed(playerState.embedMessage, playerState.currentTrack)
+      }
+    }, 5000)
+  }
+
+  /**
+   * Останавливает интервал обновления прогресса
+   * @param guildId ID сервера
+   */
+  private stopProgressUpdateInterval(guildId: string) {
+    const playerState = this.playerStates.get(guildId)
+    if (!playerState || !playerState.progressUpdateInterval) return
+
+    clearInterval(playerState.progressUpdateInterval)
+    playerState.progressUpdateInterval = null
   }
 
   /**
@@ -696,10 +813,23 @@ export class PlayerService {
         })
       }
 
-      // Отправляем фидбэк о начале воспроизведения трека
-      await this.yandexMusicService.sendTrackStartedFeedback(accessToken, stationId, trackInfo.id)
+      // Отправляем фидбэк о начале воспроизведения трека, если id трека определен
+      if (trackInfo.id) {
+        await this.yandexMusicService.sendTrackStartedFeedback(accessToken, stationId, trackInfo.id)
+      }
 
-      // Получаем URL для стриминга трека
+      // Получаем URL для стриминга трека, если id трека определен
+      if (!trackInfo.id) {
+        console.log(`Не удалось получить URL для трека: ${trackInfo.title} (ID трека не определен)`)
+        if (embedMessage) {
+          this.updateEmbedWithError(
+            embedMessage,
+            `Не удалось получить URL для трека: ${trackInfo.title} (ID трека не определен)`
+          )
+        }
+        return false
+      }
+
       const streamUrl = await this.yandexMusicService.getStreamUrl(accessToken, trackInfo.id)
       if (!streamUrl) {
         console.log(`Не удалось получить URL для трека: ${trackInfo.title}`)
@@ -720,9 +850,9 @@ export class PlayerService {
 
       // Создаем ресурс с дополнительными настройками для стабильности
       const resource = createAudioResource(streamUrl, {
-        inputType: StreamType.Arbitrary, // Используем Arbitrary для любого формата
+        inputType: StreamType.Arbitrary,
         inlineVolume: true,
-        silencePaddingFrames: 5 // Уменьшаем количество кадров тишины
+        silencePaddingFrames: 5
       })
 
       // Устанавливаем громкость на 80% для предотвращения искажений
@@ -767,10 +897,7 @@ export class PlayerService {
         }
       }
 
-      // Воспроизводим аудио с небольшой задержкой для стабильности
       console.log(`Начало воспроизведения трека: ${trackInfo.title}`)
-
-      // Небольшая задержка перед воспроизведением для стабильности
       console.log('Ожидаем 2 секунды перед воспроизведением...')
 
       // Добавляем обработчик для отслеживания состояния ресурса
@@ -784,20 +911,24 @@ export class PlayerService {
           player.play(resource)
           console.log(`Команда воспроизведения отправлена для трека: ${trackInfo.title}`)
         } catch (error) {
-          // Приводим ошибку к типу Error для доступа к свойству message
           const playError = error instanceof Error ? error : new Error(String(error))
           console.error('Ошибка при запуске воспроизведения:', playError)
           if (embedMessage) {
             this.updateEmbedWithError(embedMessage, `Ошибка при запуске воспроизведения: ${playError.message}`)
           }
         }
-      }, 2000) // Уменьшаем задержку до 2 секунд
+      }, 2000)
 
       // Обновляем embed с информацией о треке
       this.updateEmbed(embedMessage, trackInfo)
 
       // Устанавливаем время начала воспроизведения трека
-      const playerState = this.playerStates.get(guildId as any)
+      if (!guildId) {
+        console.error('Не удалось получить ID сервера из сообщения при установке времени начала воспроизведения')
+        return true // Возвращаем true, так как трек уже начал воспроизводиться
+      }
+
+      const playerState = this.playerStates.get(guildId)
       if (playerState) {
         playerState.trackStartTime = Date.now()
         // Проверяем, что id не undefined и не null
@@ -806,7 +937,23 @@ export class PlayerService {
         } else {
           playerState.lastTrackId = null
         }
-        playerState.retryCount = 0 // Сбрасываем счетчик повторных попыток
+        playerState.retryCount = 0
+
+        // Получаем длительность трека (в миллисекундах)
+        try {
+          if (trackInfo.id) {
+            const trackDetails = await this.yandexMusicService.getTrackDetails(accessToken, trackInfo.id)
+            if (trackDetails && trackDetails.durationMs) {
+              playerState.trackDuration = trackDetails.durationMs
+              console.log(`Длительность трека: ${trackDetails.durationMs}ms`)
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка при получении длительности трека:', error)
+        }
+
+        // Запускаем интервал обновления прогресса
+        this.startProgressUpdateInterval(guildId as string)
       }
 
       return true
@@ -830,7 +977,10 @@ export class PlayerService {
     initialTracks: IYandexTrack[]
   ) {
     const guildId = embedMessage?.guild?.id
-    if (!guildId) return
+    if (!guildId) {
+      console.error('Не удалось получить ID сервера из сообщения')
+      return
+    }
 
     // Обновляем очередь треков в состоянии плеера
     const playerState = this.playerStates.get(guildId)
@@ -915,7 +1065,7 @@ export class PlayerService {
       // Обновляем embed с информацией об ошибке
       if (embedMessage) {
         const errorEmbed = new EmbedBuilder()
-          .setColor('#FFA500') // Оранжевый цвет для временных ошибок
+          .setColor('#FFA500')
           .setTitle('⚠️ Проблема с воспроизведением')
           .setDescription(
             `Возникла проблема при воспроизведении трека "${playerState.currentTrack.title}". Пытаемся восстановить...`
@@ -1018,7 +1168,7 @@ export class PlayerService {
         // Обновляем embed с информацией о повторной попытке
         if (embedMessage) {
           const reconnectEmbed = new EmbedBuilder()
-            .setColor('#FFA500') // Оранжевый цвет для временных ошибок
+            .setColor('#FFA500')
             .setTitle('🔄 Восстановление соединения')
             .setDescription(`Восстанавливаем воспроизведение трека "${playerState.currentTrack.title}"...`)
             .setFooter({ text: 'Яндекс Музыка' })
@@ -1063,11 +1213,11 @@ export class PlayerService {
             if (!success) {
               console.log(`Не удалось воспроизвести трек: ${nextTrack.title}, ждем 3 секунды перед следующей попыткой`)
 
-              // Если не удалось воспроизвести трек, ждем 3 секунды перед следующей попыткой
+              // Если не удалось воспроизвести трек, ждем 2 секунды перед следующей попыткой
               setTimeout(() => {
                 isLoadingTrack = false
                 player.emit(AudioPlayerStatus.Idle)
-              }, 3000)
+              }, 2000)
             } else {
               // Если трек успешно воспроизведен, сбрасываем флаг загрузки
               isLoadingTrack = false
