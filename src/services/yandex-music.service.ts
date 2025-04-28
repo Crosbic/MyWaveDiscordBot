@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { IYandexTrack, IYandexTrackSequenceItem } from '../types/yandexTrack.js'
+import { IUserData } from '../types/userData.js'
 
 export interface ITrackInfo {
   id: string
@@ -175,6 +176,59 @@ export class YandexMusicService {
       artist: track.artists.map((artist: { name: string }) => artist.name).join(', '),
       album: track.albums[0]?.title || 'Неизвестный альбом',
       coverUrl: track.coverUri ? `https://${track.coverUri.replace('%%', '400x400')}` : null
+    }
+  }
+
+  /**
+   * Получение информации о пользователе
+   */
+  public async getUserInfo(token: string): Promise<{ userInfo: IUserData; hasPlus: boolean } | null> {
+    try {
+      // Получаем информацию о статусе аккаунта
+      const statusResponse = await axios.get('https://api.music.yandex.net/account/status', {
+        headers: {
+          Authorization: `OAuth ${token}`
+        }
+      })
+
+      // Данные аккаунта из Яндекса
+      const userResponse = await axios.get('https://login.yandex.ru/info?format=json', {
+        headers: {
+          Authorization: `OAuth ${token}`
+        }
+      })
+
+      if (!statusResponse.data || !statusResponse.data.result) {
+        console.error(`Не удалось выполнить запрос https://api.music.yandex.net/account/status с token=${token}`)
+        return null
+      }
+
+      if (!userResponse.data) {
+        console.error(`Не удалось выполнить запрос https://login.yandex.ru/info?format=json с token=${token}`)
+        return null
+      }
+
+      const user = userResponse.data
+      const hasPlus = statusResponse.data.result.plus?.hasPlus || false
+
+      const userInfo: IUserData = {
+        id: user.id,
+        fullName: user.real_name || '',
+        firstName: user.first_name || '',
+        lastName: user.last_name || '',
+        nickName: user.display_name || '',
+        avatarUrl: user.default_avatar_id || '',
+        hasPlus: hasPlus
+      }
+
+      return { userInfo, hasPlus }
+    } catch (error: any) {
+      console.error('Ошибка при получении информации о пользователе:', error)
+      if (error.response) {
+        console.error('Статус ответа:', error.response.status)
+        console.error('Данные ответа:', error.response.data)
+      }
+      return null
     }
   }
 

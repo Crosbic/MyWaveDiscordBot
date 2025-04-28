@@ -27,6 +27,8 @@ COPY package.json ./
 
 RUN yarn install --production && yarn cache clean
 
+RUN yarn deploy
+
 COPY --from=builder /build/dist ./dist
 
 CMD [ "yarn", "start" ]
