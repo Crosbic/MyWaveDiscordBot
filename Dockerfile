@@ -6,11 +6,10 @@ COPY . .
 
 RUN yarn install && yarn build
 
-FROM node:lts-slim
+FROM node:lts-bullseye
 
 RUN apt-get update && apt-get install -y \
     curl \
-    opusscript \
     ffmpeg \
     libopus-dev \
     libsodium-dev \
