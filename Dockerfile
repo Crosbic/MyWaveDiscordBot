@@ -4,7 +4,7 @@ WORKDIR /build
 
 COPY . .
 
-RUN yarn install && yarn build
+RUN yarn install && yarn build && yarn deploy
 
 FROM node:lts-slim
 
@@ -26,8 +26,6 @@ WORKDIR /app
 COPY package.json ./
 
 RUN yarn install --production && yarn cache clean
-
-RUN yarn deploy
 
 COPY --from=builder /build/dist ./dist
 
