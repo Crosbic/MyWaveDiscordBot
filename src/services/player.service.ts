@@ -27,10 +27,8 @@ import {
 import { ITrackInfo, YandexMusicService } from './yandex-music.service.js'
 import { IYandexTrack } from '../types/yandexTrack.js'
 
-console.log('Движок до инициализации: ', process.env.OPUS_ENGINE)
-console.log('Инициализация аудио-движка...')
+// Устанавливаем OPUS_ENGINE в opusscript
 process.env.OPUS_ENGINE = 'opusscript'
-console.log('Используется аудио-движок: opusscript')
 
 // Динамически импортируем opusscript
 let opusscript: any = null
@@ -38,7 +36,6 @@ try {
   // Используем динамический импорт для ESM
   const opusModule = await import('opusscript')
   opusscript = new opusModule.default(48000, 2, 2048)
-  console.log('opusscript успешно загружен и инициализирован')
 } catch (error) {
   console.error('Ошибка при загрузке opusscript:', error)
 }
@@ -703,10 +700,9 @@ export class PlayerService {
       await this.yandexMusicService.sendTrackStartedFeedback(accessToken, stationId, trackInfo.id)
 
       // Получаем URL для стриминга трека
-      console.log(`Получение URL для трека: ${trackInfo.title}`)
       const streamUrl = await this.yandexMusicService.getStreamUrl(accessToken, trackInfo.id)
       if (!streamUrl) {
-        console.log('Не удалось получить URL для трека')
+        console.log(`Не удалось получить URL для трека: ${trackInfo.title}`)
         if (embedMessage) {
           this.updateEmbedWithError(embedMessage, `Не удалось получить URL для трека: ${trackInfo.title}`)
         }
@@ -717,14 +713,8 @@ export class PlayerService {
       console.log(`Создание ресурса для трека: ${trackInfo.title}`)
       console.log(`Stream URL: ${streamUrl}`)
 
-      // Добавляем дополнительные опции для улучшения стабильности
-      console.log('Создаем аудио ресурс с типом Arbitrary')
-      console.log('Используемый OPUS_ENGINE:', process.env.OPUS_ENGINE)
-
       // Проверяем, успешно ли инициализирован opusscript
-      if (opusscript) {
-        console.log('Используем инициализированный opusscript для обработки аудио')
-      } else {
+      if (!opusscript) {
         console.warn('opusscript не был инициализирован, могут возникнуть проблемы с воспроизведением')
       }
 
@@ -734,8 +724,6 @@ export class PlayerService {
         inlineVolume: true,
         silencePaddingFrames: 5 // Уменьшаем количество кадров тишины
       })
-
-      console.log('Аудио ресурс успешно создан:', resource ? 'да' : 'нет')
 
       // Устанавливаем громкость на 80% для предотвращения искажений
       if (resource.volume) {
@@ -782,8 +770,8 @@ export class PlayerService {
       // Воспроизводим аудио с небольшой задержкой для стабильности
       console.log(`Начало воспроизведения трека: ${trackInfo.title}`)
 
-      // Увеличиваем задержку перед воспроизведением для стабильности
-      console.log('Ожидаем 5 секунд перед воспроизведением...')
+      // Небольшая задержка перед воспроизведением для стабильности
+      console.log('Ожидаем 2 секунды перед воспроизведением...')
 
       // Добавляем обработчик для отслеживания состояния ресурса
       resource.playStream.on('error', err => {
@@ -803,7 +791,7 @@ export class PlayerService {
             this.updateEmbedWithError(embedMessage, `Ошибка при запуске воспроизведения: ${playError.message}`)
           }
         }
-      }, 5000) // Увеличиваем задержку до 5 секунд
+      }, 2000) // Уменьшаем задержку до 2 секунд
 
       // Обновляем embed с информацией о треке
       this.updateEmbed(embedMessage, trackInfo)

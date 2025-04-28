@@ -8,16 +8,6 @@ RUN yarn install && yarn build
 
 FROM node:lts-bullseye
 
-RUN apt-get update && apt-get install -y \
-    curl \
-    ffmpeg \
-    libopus-dev \
-    libsodium-dev \
-    python3 \
-    build-essential \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
 ENV NODE_ENV production
 USER node
 
