@@ -18,7 +18,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return
   }
 
-  const authUrl = 'https://oauth.yandex.ru/authorize?response_type=token&client_id=23cabbdc6cd418abb4b39c32c41195d'
+  const authUrl = 'https://oauth.yandex.ru/authorize?response_type=token&client_id=23cabbbdc6cd418abb4b39c32c41195d'
 
   await interaction.reply({
     content: `
