@@ -16,6 +16,4 @@ export interface IPlayerState {
   retryCount: number
   lastTrackId: string | null
   skipRequested: boolean
-  trackDuration: number | null
-  progressUpdateInterval: NodeJS.Timeout | null
 }

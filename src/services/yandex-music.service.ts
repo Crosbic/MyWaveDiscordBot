@@ -226,45 +226,6 @@ export class YandexMusicService {
   }
 
   /**
-   * Получение информации о треке
-   */
-  public async getTrackDetails(token: string, trackId: string): Promise<{ durationMs: number } | null> {
-    try {
-      console.log(`Получение информации о треке ${trackId}`)
-
-      // Запрос к API для получения информации о треке
-      const response = await axios.get(`https://api.music.yandex.net/tracks`, {
-        params: {
-          'track-ids': trackId
-        },
-        headers: {
-          Authorization: `OAuth ${token}`
-        }
-      })
-
-      if (!response.data || !response.data.result || response.data.result.length === 0) {
-        console.error('Не удалось получить информацию о треке')
-        return null
-      }
-
-      // API возвращает массив треков
-      const track = response.data.result[0]
-      console.log(`Получена длительность трека: ${track.durationMs}ms`)
-
-      return {
-        durationMs: track.durationMs || 0
-      }
-    } catch (error: any) {
-      console.error('Ошибка при получении информации о треке:', error)
-      if (error.response) {
-        console.error('Статус ответа:', error.response.status)
-        console.error('Данные ответа:', error.response.data)
-      }
-      return null
-    }
-  }
-
-  /**
    * Добавление трека в список понравившихся
    */
   public async likeTrack(token: string, userId: string, trackId: string): Promise<boolean> {

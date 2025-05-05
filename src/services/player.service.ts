@@ -197,9 +197,7 @@ export class PlayerService {
       trackStartTime: null,
       retryCount: 0,
       lastTrackId: null,
-      skipRequested: false,
-      trackDuration: null,
-      progressUpdateInterval: null
+      skipRequested: false
     })
 
     return { player, connection, embedMessage }
@@ -664,36 +662,6 @@ export class PlayerService {
   }
 
   /**
-   * Создает полоску прогресса для отображения текущего положения воспроизведения
-   * @param currentTime Текущее время воспроизведения в миллисекундах
-   * @param totalTime Общая длительность трека в миллисекундах
-   * @returns Строка с полоской прогресса
-   */
-  private createProgressBar(currentTime: number, totalTime: number): string {
-    // Если длительность трека неизвестна, возвращаем пустую строку
-    if (!totalTime) return ''
-
-    const progressBarLength = 20 // Длина полоски прогресса в символах
-    const progress = Math.min(Math.max(currentTime / totalTime, 0), 1) // Прогресс от 0 до 1
-    const filledLength = Math.round(progressBarLength * progress)
-    const emptyLength = progressBarLength - filledLength
-
-    // Создаем полоску прогресса
-    const filledBar = '▓'.repeat(filledLength)
-    const emptyBar = '░'.repeat(emptyLength)
-
-    // Форматируем время в формате MM:SS
-    const formatTime = (ms: number) => {
-      const totalSeconds = Math.floor(ms / 1000)
-      const minutes = Math.floor(totalSeconds / 60)
-      const seconds = totalSeconds % 60
-      return `${minutes}:${seconds.toString().padStart(2, '0')}`
-    }
-
-    return `${formatTime(currentTime)} [${filledBar}${emptyBar}] ${formatTime(totalTime)}`
-  }
-
-  /**
    * Обновление embed с информацией о треке
    */
   public updateEmbed(message: Message | undefined, trackInfo: ITrackInfo) {
@@ -705,21 +673,10 @@ export class PlayerService {
     const playerState = this.playerStates.get(guildId)
     if (!playerState) return
 
-    // Получаем текущее время воспроизведения
-    const currentTime = playerState.trackStartTime ? Date.now() - playerState.trackStartTime : 0
-
-    // Создаем полоску прогресса, если известна длительность трека
-    let progressBar = ''
-    if (playerState.trackDuration) {
-      progressBar = this.createProgressBar(currentTime, playerState.trackDuration)
-    }
-
     const updatedEmbed = new EmbedBuilder()
       .setColor('#FFCC00')
       .setTitle('🎵 Сейчас играет')
-      .setDescription(
-        `**${trackInfo.title}**\nИсполнитель: ${trackInfo.artist}\nАльбом: ${trackInfo.album}${progressBar ? `\n\n${progressBar}` : ''}`
-      )
+      .setDescription(`**${trackInfo.title}**\nИсполнитель: ${trackInfo.artist}\nАльбом: ${trackInfo.album}`)
       .setFooter({ text: 'Яндекс Музыка' })
       .setTimestamp()
 
@@ -730,38 +687,6 @@ export class PlayerService {
     message.edit({ embeds: [updatedEmbed] }).catch((error: Error) => {
       console.error('Ошибка при обновлении embed:', error)
     })
-  }
-
-  /**
-   * Запускает интервал для обновления прогресса воспроизведения
-   * @param guildId ID сервера
-   */
-  private startProgressUpdateInterval(guildId: string) {
-    const playerState = this.playerStates.get(guildId)
-    if (!playerState || !playerState.embedMessage) return
-
-    // Очищаем предыдущий интервал, если он существует
-    if (playerState.progressUpdateInterval) {
-      clearInterval(playerState.progressUpdateInterval)
-    }
-
-    playerState.progressUpdateInterval = setInterval(() => {
-      if (playerState.isPlaying && playerState.currentTrack && playerState.embedMessage) {
-        this.updateEmbed(playerState.embedMessage, playerState.currentTrack)
-      }
-    }, 5000)
-  }
-
-  /**
-   * Останавливает интервал обновления прогресса
-   * @param guildId ID сервера
-   */
-  private stopProgressUpdateInterval(guildId: string) {
-    const playerState = this.playerStates.get(guildId)
-    if (!playerState || !playerState.progressUpdateInterval) return
-
-    clearInterval(playerState.progressUpdateInterval)
-    playerState.progressUpdateInterval = null
   }
 
   /**
@@ -920,14 +845,18 @@ export class PlayerService {
       }, 2000)
 
       // Обновляем embed с информацией о треке
-      this.updateEmbed(embedMessage, trackInfo)
-
-      // Устанавливаем время начала воспроизведения трека
-      if (!guildId) {
-        console.error('Не удалось получить ID сервера из сообщения при установке времени начала воспроизведения')
+      // Используем только embedMessage из playerState, чтобы обновлять только самый последний embed
+      if (guildId) {
+        const currentPlayerState = this.playerStates.get(guildId)
+        if (currentPlayerState && currentPlayerState.embedMessage) {
+          this.updateEmbed(currentPlayerState.embedMessage, trackInfo)
+        }
+      } else {
+        console.error('Не удалось получить ID сервера из сообщения при обновлении embed')
         return true // Возвращаем true, так как трек уже начал воспроизводиться
       }
 
+      // Устанавливаем время начала воспроизведения трека
       const playerState = this.playerStates.get(guildId)
       if (playerState) {
         playerState.trackStartTime = Date.now()
@@ -938,22 +867,6 @@ export class PlayerService {
           playerState.lastTrackId = null
         }
         playerState.retryCount = 0
-
-        // Получаем длительность трека (в миллисекундах)
-        try {
-          if (trackInfo.id) {
-            const trackDetails = await this.yandexMusicService.getTrackDetails(accessToken, trackInfo.id)
-            if (trackDetails && trackDetails.durationMs) {
-              playerState.trackDuration = trackDetails.durationMs
-              console.log(`Длительность трека: ${trackDetails.durationMs}ms`)
-            }
-          }
-        } catch (error) {
-          console.error('Ошибка при получении длительности трека:', error)
-        }
-
-        // Запускаем интервал обновления прогресса
-        this.startProgressUpdateInterval(guildId as string)
       }
 
       return true
@@ -1063,7 +976,8 @@ export class PlayerService {
       }
 
       // Обновляем embed с информацией об ошибке
-      if (embedMessage) {
+      // Используем только embedMessage из playerState, чтобы обновлять только самый последний embed
+      if (playerState.embedMessage && playerState.embedMessage.editable) {
         const errorEmbed = new EmbedBuilder()
           .setColor('#FFA500')
           .setTitle('⚠️ Проблема с воспроизведением')
@@ -1073,7 +987,7 @@ export class PlayerService {
           .setFooter({ text: 'Яндекс Музыка - Моя волна' })
           .setTimestamp()
 
-        embedMessage.edit({ embeds: [errorEmbed] }).catch((error: Error) => {
+        playerState.embedMessage.edit({ embeds: [errorEmbed] }).catch((error: Error) => {
           console.error('Ошибка при обновлении embed с ошибкой:', error)
         })
       }
@@ -1166,7 +1080,8 @@ export class PlayerService {
         }
 
         // Обновляем embed с информацией о повторной попытке
-        if (embedMessage) {
+        // Используем только embedMessage из playerState, чтобы обновлять только самый последний embed
+        if (playerState.embedMessage && playerState.embedMessage.editable) {
           const reconnectEmbed = new EmbedBuilder()
             .setColor('#FFA500')
             .setTitle('🔄 Восстановление соединения')
@@ -1178,7 +1093,7 @@ export class PlayerService {
             reconnectEmbed.setThumbnail(playerState.currentTrack.coverUrl)
           }
 
-          embedMessage.edit({ embeds: [reconnectEmbed] }).catch((error: Error) => {
+          playerState.embedMessage.edit({ embeds: [reconnectEmbed] }).catch((error: Error) => {
             console.error('Ошибка при обновлении embed с информацией о восстановлении:', error)
           })
         }
@@ -1245,7 +1160,9 @@ export class PlayerService {
             }, 1000)
           } else {
             console.log('Не удалось загрузить новые треки, завершаем воспроизведение')
-            if (embedMessage) {
+            // Используем только embedMessage из playerState, чтобы обновлять только самый последний embed
+            const currentPlayerState = this.playerStates.get(guildId)
+            if (currentPlayerState && currentPlayerState.embedMessage && currentPlayerState.embedMessage.editable) {
               const finalEmbed = new EmbedBuilder()
                 .setColor('#FF0000')
                 .setTitle('⚠️ Воспроизведение завершено')
@@ -1253,7 +1170,7 @@ export class PlayerService {
                 .setFooter({ text: 'Яндекс Музыка' })
                 .setTimestamp()
 
-              embedMessage.edit({ embeds: [finalEmbed], components: [] }).catch((error: Error) => {
+              currentPlayerState.embedMessage.edit({ embeds: [finalEmbed], components: [] }).catch((error: Error) => {
                 console.error('Ошибка при обновлении embed:', error)
               })
             }
