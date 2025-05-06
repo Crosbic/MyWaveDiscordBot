@@ -1,7 +1,8 @@
 import axios from 'axios'
-import { IYandexTrack, IYandexTrackSequenceItem } from '../types/yandexTrack.js'
-import { IUserData } from '../types/userData.js'
+
 import { ITrackInfo } from '../types/trackInfo.js'
+import { IUserData } from '../types/userData.js'
+import { IYandexTrack, IYandexTrackSequenceItem } from '../types/yandexTrack.js'
 
 export class YandexMusicService {
   private static instance: YandexMusicService
@@ -151,8 +152,7 @@ export class YandexMusicService {
         return null
       }
       // Формируем итоговый URL для стриминга
-      const streamUrl = `https://${downloadUrlResponse.data.host}/get-mp3/${downloadUrlResponse.data.s}/${downloadUrlResponse.data.ts}${downloadUrlResponse.data.path}`
-      return streamUrl
+      return `https://${downloadUrlResponse.data.host}/get-mp3/${downloadUrlResponse.data.s}/${downloadUrlResponse.data.ts}${downloadUrlResponse.data.path}`
     } catch (error: any) {
       console.error('Ошибка при получении URL для стриминга:', error)
       return null

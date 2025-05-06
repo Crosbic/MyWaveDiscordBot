@@ -22,11 +22,12 @@ import {
   VoiceConnectionStatus
 } from '@discordjs/voice'
 
+import { DatabaseService } from './database.service.js'
 import { YandexMusicService } from './yandex-music.service.js'
-import { IYandexTrack } from '../types/yandexTrack.js'
-import { IPlayerState } from '../types/playerState.js'
 import { IPlayerOptions } from '../types/playerOptions.js'
+import { IPlayerState } from '../types/playerState.js'
 import { ITrackInfo } from '../types/trackInfo.js'
+import { IYandexTrack } from '../types/yandexTrack.js'
 
 // Устанавливаем OPUS_ENGINE в opusscript
 process.env.OPUS_ENGINE = 'opusscript'
@@ -283,6 +284,7 @@ export class PlayerService {
 
   /**
    * Обработка нажатия кнопки "Лайк"
+   * Добавляет трек в избранное пользователю, который нажал на кнопку
    */
   private async handleLike(interaction: ButtonInteraction, guildId: string) {
     const playerState = this.playerStates.get(guildId)
@@ -309,22 +311,47 @@ export class PlayerService {
         return
       }
 
-      // Отправляем запрос на добавление трека в список понравившихся
+      // Получаем ID пользователя, который нажал на кнопку (а не того, кто создал плеер)
+      const clickedUserId = interaction.user.id
+
+      // Получаем данные пользователя, который нажал на кнопку
+      const db = DatabaseService.getInstance()
+
+      // Проверяем авторизацию пользователя
+      if (!db.hasUserToken(clickedUserId)) {
+        await interaction.reply({
+          content: 'Вы не авторизованы в Яндекс Музыке. Используйте команду `/login` для авторизации.',
+          ephemeral: true
+        })
+        return
+      }
+
+      const userData = db.getUserData(clickedUserId)
+      if (!userData) {
+        await interaction.reply({
+          content:
+            'Не удалось получить данные вашего аккаунта. Попробуйте выйти и войти снова с помощью команд `/logout` и `/login`.',
+          ephemeral: true
+        })
+        return
+      }
+
+      // Отправляем запрос на добавление трека в список понравившихся используя данные пользователя, нажавшего на кнопку
       const success = await this.yandexMusicService.likeTrack(
-        playerState.accessToken,
-        playerState.userId,
+        userData.accessToken,
+        userData.userInfo.id,
         playerState.currentTrack.id
       )
 
       try {
         if (success) {
           await interaction.reply({
-            content: `Трек "${playerState.currentTrack.title}" добавлен в список понравившихся!`,
+            content: `Трек "${playerState.currentTrack.title}" добавлен в список понравившихся у ${userData.userInfo.nickName}!`,
             ephemeral: true
           })
         } else {
           await interaction.reply({
-            content: 'Не удалось добавить трек в список понравившихся.',
+            content: `Не удалось добавить трек "${playerState.currentTrack.title}" в список понравившихся у ${userData.userInfo.nickName}.`,
             ephemeral: true
           })
         }

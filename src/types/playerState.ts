@@ -1,6 +1,7 @@
 import { Message } from 'discord.js'
-import { IYandexTrack } from './yandexTrack.js'
+
 import { ITrackInfo } from './trackInfo.js'
+import { IYandexTrack } from './yandexTrack.js'
 
 export interface IPlayerState {
   isPlaying: boolean
