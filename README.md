@@ -10,7 +10,7 @@
 1. Клонируйте репозиторий:
 
    ```
-   git clone https://github.com/yourusername/ym-player-bot.git
+   git clone https://github.com/Crosbic/ym-player-bot.git
    cd ym-player-bot
    ```
 
