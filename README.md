@@ -10,8 +10,8 @@
 1. Клонируйте репозиторий:
 
    ```
-   git clone https://github.com/Crosbic/ym-player-bot.git
-   cd ym-player-bot
+   git clone https://github.com/Crosbic/MyWaveDiscordBot.git
+   cd MyWaveDiscordBot
    ```
 
 2. Установите зависимости:
