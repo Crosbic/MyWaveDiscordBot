@@ -224,24 +224,15 @@ export class PlayerService {
    * Настройка обработчика кнопок
    */
   private setupButtonHandler(message: Message, guildId: string) {
-    // Получаем текущее состояние плеера
-    const playerState = this.playerStates.get(guildId)
+    console.log('Настройка обработчика кнопок')
 
-    // Если есть предыдущий коллектор, останавливаем его
-    if (playerState?.buttonCollector) {
-      playerState.buttonCollector.stop()
-    }
-
-    // Создаем новый коллектор
+    // Создаем коллектор с большим временем жизни
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      time: 3600000 // 1 час
+      time: 86400000 // 24 часа
     })
 
-    // Сохраняем коллектор в состоянии плеера
-    if (playerState) {
-      playerState.buttonCollector = collector
-    }
+    console.log('Коллектор кнопок создан')
 
     collector.on('collect', async (interaction: ButtonInteraction) => {
       // Проверяем, что плеер существует
@@ -257,7 +248,8 @@ export class PlayerService {
       }
 
       // Проверяем, что кнопку нажал тот же пользователь, который запустил воспроизведение
-      if (interaction.user.id !== playerState.discordUserId) {
+      // Исключение делаем для кнопки "Лайк", которую может нажать любой пользователь
+      if (interaction.user.id !== playerState.discordUserId && interaction.customId !== 'like') {
         await interaction.reply({
           content: 'Только пользователь, запустивший воспроизведение, может управлять плеером.',
           ephemeral: true
@@ -500,11 +492,14 @@ export class PlayerService {
 
       // Обновляем кнопки
       if (playerState.embedMessage && playerState.embedMessage.editable) {
-        const row = this.createControlButtons(false)
-        await playerState.embedMessage.edit({ components: [row] })
-
-        // Перерегистрируем обработчик кнопок
-        this.setupButtonHandler(playerState.embedMessage, guildId)
+        try {
+          console.log('Обновляем кнопки на паузу')
+          const row = this.createControlButtons(false)
+          await playerState.embedMessage.edit({ components: [row] })
+          console.log('Кнопки обновлены')
+        } catch (error) {
+          console.error('Ошибка при обновлении кнопок:', error)
+        }
       }
 
       try {
@@ -557,11 +552,14 @@ export class PlayerService {
 
       // Обновляем кнопки
       if (playerState.embedMessage && playerState.embedMessage.editable) {
-        const row = this.createControlButtons(true)
-        await playerState.embedMessage.edit({ components: [row] })
-
-        // Перерегистрируем обработчик кнопок
-        this.setupButtonHandler(playerState.embedMessage, guildId)
+        try {
+          console.log('Обновляем кнопки на воспроизведение')
+          const row = this.createControlButtons(true)
+          await playerState.embedMessage.edit({ components: [row] })
+          console.log('Кнопки обновлены')
+        } catch (error) {
+          console.error('Ошибка при обновлении кнопок:', error)
+        }
       }
 
       try {
@@ -863,11 +861,14 @@ export class PlayerService {
 
           // Обновляем кнопки
           if (playerState.embedMessage && playerState.embedMessage.editable) {
-            const row = this.createControlButtons(true)
-            await playerState.embedMessage.edit({ components: [row] })
-
-            // Перерегистрируем обработчик кнопок
-            this.setupButtonHandler(playerState.embedMessage, guildId)
+            try {
+              console.log('Обновляем кнопки при воспроизведении трека')
+              const row = this.createControlButtons(true)
+              await playerState.embedMessage.edit({ components: [row] })
+              console.log('Кнопки обновлены')
+            } catch (error) {
+              console.error('Ошибка при обновлении кнопок:', error)
+            }
           }
         }
       }
