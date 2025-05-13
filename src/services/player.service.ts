@@ -224,10 +224,24 @@ export class PlayerService {
    * Настройка обработчика кнопок
    */
   private setupButtonHandler(message: Message, guildId: string) {
+    // Получаем текущее состояние плеера
+    const playerState = this.playerStates.get(guildId)
+
+    // Если есть предыдущий коллектор, останавливаем его
+    if (playerState?.buttonCollector) {
+      playerState.buttonCollector.stop()
+    }
+
+    // Создаем новый коллектор
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.Button,
       time: 3600000 // 1 час
     })
+
+    // Сохраняем коллектор в состоянии плеера
+    if (playerState) {
+      playerState.buttonCollector = collector
+    }
 
     collector.on('collect', async (interaction: ButtonInteraction) => {
       // Проверяем, что плеер существует
@@ -488,6 +502,9 @@ export class PlayerService {
       if (playerState.embedMessage && playerState.embedMessage.editable) {
         const row = this.createControlButtons(false)
         await playerState.embedMessage.edit({ components: [row] })
+
+        // Перерегистрируем обработчик кнопок
+        this.setupButtonHandler(playerState.embedMessage, guildId)
       }
 
       try {
@@ -542,6 +559,9 @@ export class PlayerService {
       if (playerState.embedMessage && playerState.embedMessage.editable) {
         const row = this.createControlButtons(true)
         await playerState.embedMessage.edit({ components: [row] })
+
+        // Перерегистрируем обработчик кнопок
+        this.setupButtonHandler(playerState.embedMessage, guildId)
       }
 
       try {
@@ -845,6 +865,9 @@ export class PlayerService {
           if (playerState.embedMessage && playerState.embedMessage.editable) {
             const row = this.createControlButtons(true)
             await playerState.embedMessage.edit({ components: [row] })
+
+            // Перерегистрируем обработчик кнопок
+            this.setupButtonHandler(playerState.embedMessage, guildId)
           }
         }
       }

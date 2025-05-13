@@ -1,4 +1,4 @@
-import { Message } from 'discord.js'
+import { InteractionCollector, Message, ButtonInteraction } from 'discord.js'
 
 import { ITrackInfo } from './trackInfo.js'
 import { IYandexTrack } from './yandexTrack.js'
@@ -17,4 +17,5 @@ export interface IPlayerState {
   retryCount: number
   lastTrackId: string | null
   skipRequested: boolean
+  buttonCollector?: InteractionCollector<ButtonInteraction>
 }
