@@ -22,7 +22,6 @@ export class DatabaseService {
     const dbPath = path.join(dbDir, 'users.db')
     this.db = new Database(dbPath)
 
-    // Включаем внешние ключи
     this.db.pragma('foreign_keys = ON')
 
     this.db.exec(`

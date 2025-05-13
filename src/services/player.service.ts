@@ -29,13 +29,10 @@ import { IPlayerState } from '../types/playerState.js'
 import { ITrackInfo } from '../types/trackInfo.js'
 import { IYandexTrack } from '../types/yandexTrack.js'
 
-// Устанавливаем OPUS_ENGINE в opusscript
 process.env.OPUS_ENGINE = 'opusscript'
 
-// Динамически импортируем opusscript
 let opusscript: any = null
 try {
-  // Используем динамический импорт для ESM
   const opusModule = await import('opusscript')
   opusscript = new opusModule.default(48000, 2, 2048)
 } catch (error) {
@@ -49,6 +46,11 @@ export class PlayerService {
   private connections: Map<string, VoiceConnection> = new Map()
   private playerStates: Map<string, IPlayerState> = new Map()
   private currentResources: Map<string, AudioResource> = new Map()
+  private inactivityTimers: Map<string, NodeJS.Timeout> = new Map()
+  private pauseTimers: Map<string, NodeJS.Timeout> = new Map()
+
+  private readonly EMPTY_CHANNEL_TIMEOUT = 20000
+  private readonly NO_PLAYBACK_TIMEOUT = 30000
 
   private constructor() {
     this.yandexMusicService = YandexMusicService.getInstance()
@@ -81,26 +83,6 @@ export class PlayerService {
   }
 
   /**
-   * Добавляет трек в очередь существующего плеера
-   * @param guildId ID сервера
-   * @param track Трек для добавления в очередь
-   * @returns true, если трек успешно добавлен, false, если плеер не существует
-   */
-  public addTrackToQueue(guildId: string, track: IYandexTrack): boolean {
-    const playerState = this.playerStates.get(guildId)
-
-    if (!playerState) {
-      return false
-    }
-
-    // Добавляем трек в очередь
-    playerState.trackQueue.push(track)
-    console.log(`Трек "${track.title}" добавлен в очередь`)
-
-    return true
-  }
-
-  /**
    * Создание и настройка плеера для воспроизведения треков
    */
   public async createPlayer(options: IPlayerOptions): Promise<{
@@ -111,24 +93,20 @@ export class PlayerService {
     const { interaction, voiceChannel, accessToken, userId, stationId } = options
     const guildId = interaction.guild!.id
 
-    // Присоединяемся к голосовому каналу
     const connection = joinVoiceChannel({
       channelId: voiceChannel.id,
       guildId: guildId,
       adapterCreator: interaction.guild!.voiceAdapterCreator
     })
 
-    // Создаем аудио плеер
     const player = createAudioPlayer({
       behaviors: {
         noSubscriber: NoSubscriberBehavior.Play
       }
     })
 
-    // Подписываем соединение на плеер
     connection.subscribe(player)
 
-    // Ожидаем успешного подключения к каналу
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 5_000)
     } catch (error) {
@@ -137,26 +115,18 @@ export class PlayerService {
       throw new Error('Не удалось подключиться к голосовому каналу')
     }
 
-    // Обработка ошибок соединения
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
         await Promise.race([
           entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
           entersState(connection, VoiceConnectionStatus.Connecting, 5_000)
         ])
-        // Если мы дошли до этой точки, значит соединение пытается восстановиться
       } catch (error) {
-        // Если мы дошли до этой точки, соединение не может быть восстановлено
         console.log(error)
-        connection.destroy()
-        this.players.delete(guildId)
-        this.connections.delete(guildId)
-        this.playerStates.delete(guildId)
-        this.currentResources.delete(guildId)
+        this.cleanupPlayer(guildId)
       }
     })
 
-    // Создаем embed для отображения информации о треке
     const embed = new EmbedBuilder()
       .setColor('#FFCC00')
       .setTitle('🎵 Сейчас играет')
@@ -164,27 +134,21 @@ export class PlayerService {
       .setFooter({ text: 'Яндекс Музыка' })
       .setTimestamp()
 
-    // Создаем кнопки управления
     const row = this.createControlButtons(true)
 
-    // Проверяем, что канал является текстовым каналом, который поддерживает отправку сообщений
     let embedMessage: Message | undefined
     if (interaction.channel && 'send' in interaction.channel) {
-      // Отправляем embed, который будем обновлять
       embedMessage = await interaction.channel.send({
         embeds: [embed],
         components: [row]
       })
 
-      // Настраиваем обработчик кнопок
       this.setupButtonHandler(embedMessage, guildId)
     }
 
-    // Сохраняем плеер и соединение
     this.players.set(guildId, player)
     this.connections.set(guildId, connection)
 
-    // Инициализируем состояние плеера
     this.playerStates.set(guildId, {
       isPlaying: false,
       currentTrack: null,
@@ -200,6 +164,8 @@ export class PlayerService {
       lastTrackId: null,
       skipRequested: false
     })
+
+    this.startActivityChecks(guildId, voiceChannel)
 
     return { player, connection, embedMessage }
   }
@@ -226,7 +192,6 @@ export class PlayerService {
   private setupButtonHandler(message: Message, guildId: string) {
     console.log('Настройка обработчика кнопок')
 
-    // Создаем коллектор с большим временем жизни
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.Button,
       time: 86400000 // 24 часа
@@ -235,7 +200,6 @@ export class PlayerService {
     console.log('Коллектор кнопок создан')
 
     collector.on('collect', async (interaction: ButtonInteraction) => {
-      // Проверяем, что плеер существует
       const player = this.players.get(guildId)
       const playerState = this.playerStates.get(guildId)
 
@@ -257,7 +221,6 @@ export class PlayerService {
         return
       }
 
-      // Обрабатываем нажатие кнопки
       switch (interaction.customId) {
         case 'like':
           await this.handleLike(interaction, guildId)
@@ -281,7 +244,6 @@ export class PlayerService {
     })
 
     collector.on('end', () => {
-      // Удаляем кнопки после истечения времени коллектора
       if (message.editable) {
         message.edit({ components: [] }).catch(console.error)
       }
@@ -302,13 +264,11 @@ export class PlayerService {
         })
       } catch (error) {
         console.error('Ошибка при ответе на взаимодействие:', error)
-        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
       }
       return
     }
 
     try {
-      // Проверяем, что у трека есть ID
       if (!playerState.currentTrack.id) {
         await interaction.reply({
           content: `Не удалось добавить трек "${playerState.currentTrack.title}" в список понравившихся: ID трека не определен.`,
@@ -317,13 +277,10 @@ export class PlayerService {
         return
       }
 
-      // Получаем ID пользователя, который нажал на кнопку (а не того, кто создал плеер)
       const clickedUserId = interaction.user.id
 
-      // Получаем данные пользователя, который нажал на кнопку
       const db = DatabaseService.getInstance()
 
-      // Проверяем авторизацию пользователя
       if (!db.hasUserToken(clickedUserId)) {
         await interaction.reply({
           content: 'Вы не авторизованы в Яндекс Музыке. Используйте команду `/login` для авторизации.',
@@ -342,7 +299,6 @@ export class PlayerService {
         return
       }
 
-      // Отправляем запрос на добавление трека в список понравившихся используя данные пользователя, нажавшего на кнопку
       const success = await this.yandexMusicService.likeTrack(
         userData.accessToken,
         userData.userInfo.id,
@@ -363,8 +319,6 @@ export class PlayerService {
         }
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
-        // Основное действие (лайк трека) уже выполнено
       }
     } catch (error) {
       console.error('Ошибка при отправке лайка:', error)
@@ -375,7 +329,6 @@ export class PlayerService {
         })
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие после ошибки лайка:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
       }
     }
   }
@@ -395,7 +348,6 @@ export class PlayerService {
         })
       } catch (error) {
         console.error('Ошибка при ответе на взаимодействие:', error)
-        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
       }
       return
     }
@@ -408,17 +360,14 @@ export class PlayerService {
         })
       } catch (error) {
         console.error('Ошибка при ответе на взаимодействие:', error)
-        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
       }
       return
     }
 
     try {
-      // Берем последний трек из истории
       const previousTrack = playerState.previousTracks.pop()
 
       if (previousTrack) {
-        // Если есть текущий трек, добавляем его в начало очереди
         if (playerState.currentTrack) {
           const currentTrackAsYandexTrack: IYandexTrack = {
             id: playerState.currentTrack.id,
@@ -431,7 +380,6 @@ export class PlayerService {
           playerState.trackQueue.unshift(currentTrackAsYandexTrack)
         }
 
-        // Воспроизводим предыдущий трек
         const trackInfo = this.yandexMusicService.trackToTrackInfo(previousTrack)
         await this.playTrack(
           player,
@@ -448,8 +396,6 @@ export class PlayerService {
           })
         } catch (replyError) {
           console.error('Ошибка при ответе на взаимодействие:', replyError)
-          // Если взаимодействие истекло, просто логируем ошибку
-          // Основное действие (воспроизведение предыдущего трека) уже выполнено
         }
       }
     } catch (error) {
@@ -461,7 +407,6 @@ export class PlayerService {
         })
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие после ошибки воспроизведения:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
       }
     }
   }
@@ -481,7 +426,6 @@ export class PlayerService {
         })
       } catch (error) {
         console.error('Ошибка при ответе на взаимодействие:', error)
-        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
       }
       return
     }
@@ -490,7 +434,6 @@ export class PlayerService {
       player.pause()
       playerState.isPlaying = false
 
-      // Обновляем кнопки
       if (playerState.embedMessage && playerState.embedMessage.editable) {
         try {
           console.log('Обновляем кнопки на паузу')
@@ -509,8 +452,6 @@ export class PlayerService {
         })
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
-        // Основное действие (пауза) уже выполнено
       }
     } catch (error) {
       console.error('Ошибка при приостановке воспроизведения:', error)
@@ -521,7 +462,6 @@ export class PlayerService {
         })
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие после ошибки паузы:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
       }
     }
   }
@@ -541,7 +481,6 @@ export class PlayerService {
         })
       } catch (error) {
         console.error('Ошибка при ответе на взаимодействие:', error)
-        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
       }
       return
     }
@@ -550,7 +489,6 @@ export class PlayerService {
       player.unpause()
       playerState.isPlaying = true
 
-      // Обновляем кнопки
       if (playerState.embedMessage && playerState.embedMessage.editable) {
         try {
           console.log('Обновляем кнопки на воспроизведение')
@@ -569,8 +507,6 @@ export class PlayerService {
         })
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
-        // Основное действие (возобновление воспроизведения) уже выполнено
       }
     } catch (error) {
       console.error('Ошибка при возобновлении воспроизведения:', error)
@@ -581,7 +517,6 @@ export class PlayerService {
         })
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие после ошибки возобновления:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
       }
     }
   }
@@ -602,23 +537,16 @@ export class PlayerService {
         })
       } catch (error) {
         console.error('Ошибка при ответе на взаимодействие:', error)
-        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
       }
       return
     }
 
     try {
-      // Останавливаем воспроизведение и отключаемся от канала
       player.stop()
       connection.destroy()
 
-      // Удаляем плеер и соединение из карт
-      this.players.delete(guildId)
-      this.connections.delete(guildId)
-      this.playerStates.delete(guildId)
-      this.currentResources.delete(guildId)
+      this.cleanupPlayer(guildId)
 
-      // Обновляем сообщение
       if (playerState.embedMessage && playerState.embedMessage.editable) {
         const stoppedEmbed = new EmbedBuilder()
           .setColor('#FF0000')
@@ -637,8 +565,6 @@ export class PlayerService {
         })
       } catch (error) {
         console.error('Ошибка при ответе на взаимодействие:', error)
-        // Если взаимодействие истекло, просто логируем ошибку
-        // Основные действия по остановке плеера уже выполнены
       }
     } catch (error) {
       console.error('Ошибка при остановке воспроизведения:', error)
@@ -649,7 +575,6 @@ export class PlayerService {
         })
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие после ошибки остановки:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
       }
     }
   }
@@ -669,17 +594,14 @@ export class PlayerService {
         })
       } catch (error) {
         console.error('Ошибка при ответе на взаимодействие:', error)
-        // Если взаимодействие истекло, просто логируем ошибку и продолжаем
       }
       return
     }
 
     try {
-      // Устанавливаем флаг, что пользователь запросил переход к следующему треку
       playerState.skipRequested = true
       console.log('Пользователь запросил переход к следующему треку')
 
-      // Эмитируем событие Idle, чтобы запустить следующий трек
       player.emit(AudioPlayerStatus.Idle)
 
       try {
@@ -689,8 +611,6 @@ export class PlayerService {
         })
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
-        // Основное действие (переход к следующему треку) уже выполнено
       }
     } catch (error) {
       console.error('Ошибка при переходе к следующему треку:', error)
@@ -701,7 +621,6 @@ export class PlayerService {
         })
       } catch (replyError) {
         console.error('Ошибка при ответе на взаимодействие после ошибки перехода:', replyError)
-        // Если взаимодействие истекло, просто логируем ошибку
       }
     }
   }
@@ -763,7 +682,6 @@ export class PlayerService {
     embedMessage: Message | undefined
   ): Promise<boolean> {
     try {
-      // Обновляем embed с информацией о загрузке трека
       if (embedMessage) {
         const loadingEmbed = new EmbedBuilder()
           .setColor('#FFCC00')
@@ -783,12 +701,10 @@ export class PlayerService {
         })
       }
 
-      // Отправляем фидбэк о начале воспроизведения трека, если id трека определен
       if (trackInfo.id) {
         await this.yandexMusicService.sendTrackStartedFeedback(accessToken, stationId, trackInfo.id)
       }
 
-      // Получаем URL для стриминга трека, если id трека определен
       if (!trackInfo.id) {
         console.log(`Не удалось получить URL для трека: ${trackInfo.title} (ID трека не определен)`)
         if (embedMessage) {
@@ -809,35 +725,29 @@ export class PlayerService {
         return false
       }
 
-      // Создаем ресурс напрямую из URL
       console.log(`Создание ресурса для трека: ${trackInfo.title}`)
       console.log(`Stream URL: ${streamUrl}`)
 
-      // Проверяем, успешно ли инициализирован opusscript
       if (!opusscript) {
         console.warn('opusscript не был инициализирован, могут возникнуть проблемы с воспроизведением')
       }
 
-      // Создаем ресурс с дополнительными настройками для стабильности
       const resource = createAudioResource(streamUrl, {
         inputType: StreamType.Arbitrary,
         inlineVolume: true,
         silencePaddingFrames: 5
       })
 
-      // Устанавливаем громкость на 80% для предотвращения искажений
       if (resource.volume) {
-        resource.volume.setVolume(0.8)
+        resource.volume.setVolume(0.8) // Чтоб не оглохли
       }
 
-      // Сохраняем ресурс и информацию о текущем треке
       const guildId = embedMessage?.guild?.id
       if (guildId) {
         this.currentResources.set(guildId, resource)
 
         const playerState = this.playerStates.get(guildId)
         if (playerState) {
-          // Если есть текущий трек, добавляем его в историю
           if (playerState.currentTrack) {
             const currentTrackAsYandexTrack: IYandexTrack = {
               id: playerState.currentTrack.id,
@@ -847,7 +757,6 @@ export class PlayerService {
               coverUri: playerState.currentTrack.coverUrl?.replace('https://', '').replace('400x400', '%%') || ''
             }
 
-            // Ограничиваем историю 10 треками
             if (playerState.previousTracks.length >= 10) {
               playerState.previousTracks.shift()
             }
@@ -855,11 +764,9 @@ export class PlayerService {
             playerState.previousTracks.push(currentTrackAsYandexTrack)
           }
 
-          // Обновляем текущий трек
           playerState.currentTrack = trackInfo
           playerState.isPlaying = true
 
-          // Обновляем кнопки
           if (playerState.embedMessage && playerState.embedMessage.editable) {
             try {
               console.log('Обновляем кнопки при воспроизведении трека')
@@ -876,7 +783,6 @@ export class PlayerService {
       console.log(`Начало воспроизведения трека: ${trackInfo.title}`)
       console.log('Ожидаем 2 секунды перед воспроизведением...')
 
-      // Добавляем обработчик для отслеживания состояния ресурса
       resource.playStream.on('error', err => {
         console.error('Ошибка в потоке воспроизведения:', err)
       })
@@ -895,8 +801,6 @@ export class PlayerService {
         }
       }, 2000)
 
-      // Обновляем embed с информацией о треке
-      // Используем только embedMessage из playerState, чтобы обновлять только самый последний embed
       if (guildId) {
         const currentPlayerState = this.playerStates.get(guildId)
         if (currentPlayerState && currentPlayerState.embedMessage) {
@@ -904,14 +808,12 @@ export class PlayerService {
         }
       } else {
         console.error('Не удалось получить ID сервера из сообщения при обновлении embed')
-        return true // Возвращаем true, так как трек уже начал воспроизводиться
+        return true
       }
 
-      // Устанавливаем время начала воспроизведения трека
       const playerState = this.playerStates.get(guildId)
       if (playerState) {
         playerState.trackStartTime = Date.now()
-        // Проверяем, что id не undefined и не null
         if (trackInfo.id) {
           playerState.lastTrackId = trackInfo.id
         } else {
@@ -946,13 +848,11 @@ export class PlayerService {
       return
     }
 
-    // Обновляем очередь треков в состоянии плеера
     const playerState = this.playerStates.get(guildId)
     if (playerState) {
       playerState.trackQueue = [...initialTracks]
     }
 
-    // Функция для загрузки новых треков
     const loadMoreTracks = async () => {
       try {
         console.log('Загружаем новые треки для очереди...')
@@ -960,7 +860,6 @@ export class PlayerService {
 
         const playerState = this.playerStates.get(guildId)
         if (playerState && newTracks && newTracks.length > 0) {
-          // Добавляем все новые треки в очередь
           playerState.trackQueue.push(...newTracks)
           console.log(`Добавлено ${newTracks.length} новых треков в очередь`)
           return true
@@ -972,25 +871,16 @@ export class PlayerService {
       }
     }
 
-    // Удаляем все предыдущие обработчики событий, чтобы избежать дублирования
     player.removeAllListeners(AudioPlayerStatus.Idle)
     player.removeAllListeners('error')
 
-    // Флаг для отслеживания, находимся ли мы в процессе загрузки трека
     let isLoadingTrack = false
-
-    // Минимальное время воспроизведения трека в миллисекундах (10 секунд)
-    // Если трек играл меньше этого времени, считаем что это было прерывание, а не завершение
     const MIN_PLAY_TIME = 10000
-
-    // Максимальное количество повторных попыток воспроизведения трека
     const MAX_RETRY_COUNT = 5
 
-    // Добавляем обработчик для отслеживания состояния плеера
     player.on(AudioPlayerStatus.Playing, () => {
       console.log('Плеер перешел в состояние Playing')
 
-      // Получаем текущее состояние плеера
       const playerState = this.playerStates.get(guildId)
       if (playerState && playerState.currentTrack) {
         console.log(`Трек "${playerState.currentTrack.title}" успешно начал воспроизведение`)
@@ -1005,15 +895,12 @@ export class PlayerService {
       console.log('Плеер перешел в состояние AutoPaused')
     })
 
-    // Обработчик ошибок воспроизведения с улучшенным логированием
     player.on('error', error => {
       console.error('Ошибка воспроизведения:', error)
       console.error('Детали ошибки:', JSON.stringify(error, null, 2))
 
-      // Логируем информацию о текущем состоянии аудио-движка
       console.log('Текущий OPUS_ENGINE при ошибке:', process.env.OPUS_ENGINE)
 
-      // Проверяем, успешно ли инициализирован opusscript
       if (opusscript) {
         console.log('Используем инициализированный opusscript для обработки аудио при ошибке')
       } else {
@@ -1026,8 +913,6 @@ export class PlayerService {
         return
       }
 
-      // Обновляем embed с информацией об ошибке
-      // Используем только embedMessage из playerState, чтобы обновлять только самый последний embed
       if (playerState.embedMessage && playerState.embedMessage.editable) {
         const errorEmbed = new EmbedBuilder()
           .setColor('#FFA500')
@@ -1043,7 +928,6 @@ export class PlayerService {
         })
       }
 
-      // Пытаемся повторно воспроизвести текущий трек через 5 секунд
       setTimeout(() => {
         if (playerState.retryCount < MAX_RETRY_COUNT && playerState.currentTrack) {
           console.log(
@@ -1060,25 +944,20 @@ export class PlayerService {
       }, 5000)
     })
 
-    // Обработчик для воспроизведения следующего трека
     player.on(AudioPlayerStatus.Idle, async () => {
       const playerState = this.playerStates.get(guildId)
       if (!playerState) return
 
-      // Если мы уже в процессе загрузки трека, игнорируем событие
       if (isLoadingTrack) {
         console.log('Уже идет загрузка трека, игнорируем событие Idle')
         return
       }
 
-      // Проверяем, не было ли это кратковременное прерывание
       const currentTime = Date.now()
       const playTime = playerState.trackStartTime ? currentTime - playerState.trackStartTime : 0
 
-      // Проверяем, был ли запрошен пропуск трека пользователем
       if (playerState.skipRequested) {
         console.log('Пользователь запросил переход к следующему треку, пропускаем проверку времени воспроизведения')
-        // Сбрасываем флаг пропуска трека
         playerState.skipRequested = false
       }
       // Если трек играл меньше минимального времени и у нас есть текущий трек,
@@ -1096,19 +975,15 @@ export class PlayerService {
         )
         console.log(`Повторная попытка воспроизведения (${playerState.retryCount + 1}/${MAX_RETRY_COUNT})`)
 
-        // Увеличиваем счетчик повторных попыток
         playerState.retryCount++
 
-        // Если это последняя попытка, просто переходим к следующему треку
         if (playerState.retryCount >= MAX_RETRY_COUNT) {
           console.log(
             `Достигнуто максимальное количество попыток для трека: ${playerState.currentTrack.title}, переходим к следующему треку`
           )
 
-          // Сбрасываем флаг загрузки и переходим к следующему треку
           isLoadingTrack = false
 
-          // Если в очереди есть треки, берем следующий
           if (playerState.trackQueue.length > 0) {
             const nextTrack = playerState.trackQueue.shift()
             if (nextTrack) {
@@ -1116,7 +991,6 @@ export class PlayerService {
               this.playTrack(player, nextTrackInfo, accessToken, stationId, embedMessage)
             }
           } else {
-            // Если очередь пуста, пытаемся загрузить новые треки
             loadMoreTracks().then(loaded => {
               if (loaded && playerState.trackQueue.length > 0) {
                 const nextTrack = playerState.trackQueue.shift()
@@ -1130,8 +1004,6 @@ export class PlayerService {
           return
         }
 
-        // Обновляем embed с информацией о повторной попытке
-        // Используем только embedMessage из playerState, чтобы обновлять только самый последний embed
         if (playerState.embedMessage && playerState.embedMessage.editable) {
           const reconnectEmbed = new EmbedBuilder()
             .setColor('#FFA500')
@@ -1149,7 +1021,6 @@ export class PlayerService {
           })
         }
 
-        // Ждем 10 секунд перед повторной попыткой
         setTimeout(() => {
           if (playerState.currentTrack) {
             this.playTrack(player, playerState.currentTrack, accessToken, stationId, embedMessage)
@@ -1159,17 +1030,13 @@ export class PlayerService {
         return
       }
 
-      // Если это не прерывание или превышено максимальное количество попыток,
-      // переходим к следующему треку
       console.log('Трек закончился, проверяем очередь')
       console.log(`Треков в очереди: ${playerState.trackQueue.length}`)
 
       if (playerState.trackQueue.length > 0) {
-        // Устанавливаем флаг загрузки
         isLoadingTrack = true
 
         try {
-          // Берем следующий трек из очереди
           const nextTrack = playerState.trackQueue.shift()
           if (nextTrack) {
             console.log(`Подготовка к воспроизведению следующего трека: ${nextTrack.title}`)
@@ -1179,13 +1046,11 @@ export class PlayerService {
             if (!success) {
               console.log(`Не удалось воспроизвести трек: ${nextTrack.title}, ждем 3 секунды перед следующей попыткой`)
 
-              // Если не удалось воспроизвести трек, ждем 2 секунды перед следующей попыткой
               setTimeout(() => {
                 isLoadingTrack = false
                 player.emit(AudioPlayerStatus.Idle)
               }, 2000)
             } else {
-              // Если трек успешно воспроизведен, сбрасываем флаг загрузки
               isLoadingTrack = false
             }
           } else {
@@ -1198,13 +1063,11 @@ export class PlayerService {
       } else {
         console.log('Очередь пуста, загружаем новые треки')
 
-        // Устанавливаем флаг загрузки
         isLoadingTrack = true
 
         try {
           const loaded = await loadMoreTracks()
           if (loaded) {
-            // Если удалось загрузить новые треки, запускаем воспроизведение через 1 секунду
             setTimeout(() => {
               isLoadingTrack = false
               player.emit(AudioPlayerStatus.Idle)
@@ -1233,5 +1096,150 @@ export class PlayerService {
         }
       }
     })
+  }
+
+  /**
+   * Запуск периодических проверок активности в голосовом канале и проверки воспроизведения
+   */
+  private startActivityChecks(guildId: string, voiceChannel: any) {
+    this.clearActivityTimers(guildId)
+
+    const checkInterval = setInterval(() => {
+      const connection = this.connections.get(guildId)
+      const playerState = this.playerStates.get(guildId)
+
+      if (!connection || !playerState) {
+        this.clearActivityTimers(guildId)
+        return
+      }
+
+      const channel = voiceChannel.guild.channels.cache.get(connection.joinConfig.channelId)
+
+      if (!channel || channel.type !== 2) {
+        // 2 - это тип голосового канала
+        console.log(`Канал для проверки не найден или не является голосовым: ${connection.joinConfig.channelId}`)
+        return
+      }
+
+      const membersInChannel = channel.members.filter((member: { user: { bot: boolean } }) => !member.user.bot).size
+
+      if (membersInChannel === 0) {
+        console.log(`Голосовой канал пуст, запускаем таймер отключения для ${guildId}`)
+
+        if (!this.inactivityTimers.has(guildId)) {
+          const timer = setTimeout(() => {
+            console.log(`Таймер отключения истек для ${guildId}, отключаемся от пустого канала`)
+            this.handleAutoDisconnect(guildId, 'Все пользователи покинули голосовой канал')
+          }, this.EMPTY_CHANNEL_TIMEOUT)
+
+          this.inactivityTimers.set(guildId, timer)
+        }
+      } else {
+        if (this.inactivityTimers.has(guildId)) {
+          console.log(`В канале есть пользователи, сбрасываем таймер неактивности для ${guildId}`)
+          clearTimeout(this.inactivityTimers.get(guildId))
+          this.inactivityTimers.delete(guildId)
+        }
+      }
+
+      const player = this.players.get(guildId)
+      if (
+        (player && player.state.status === AudioPlayerStatus.Idle) ||
+        player?.state.status === AudioPlayerStatus.Paused
+      ) {
+        if (!this.pauseTimers.has(guildId)) {
+          console.log(`Плеер не воспроизводит музыку, запускаем таймер отключения для ${guildId}`)
+
+          const timer = setTimeout(() => {
+            console.log(`Таймер паузы истек для ${guildId}, отключаемся из-за отсутствия воспроизведения`)
+            this.handleAutoDisconnect(guildId, 'Нет активного воспроизведения музыки')
+          }, this.NO_PLAYBACK_TIMEOUT)
+
+          this.pauseTimers.set(guildId, timer)
+        }
+      } else if (player && player.state.status === AudioPlayerStatus.Playing) {
+        if (this.pauseTimers.has(guildId)) {
+          console.log(`Плеер воспроизводит музыку, сбрасываем таймер паузы для ${guildId}`)
+          clearTimeout(this.pauseTimers.get(guildId))
+          this.pauseTimers.delete(guildId)
+        }
+      }
+    }, 5000)
+
+    const existingIntervals = this.playerStates.get(guildId)?.checkIntervals || []
+
+    if (this.playerStates.get(guildId)) {
+      this.playerStates.get(guildId)!.checkIntervals = [
+        ...existingIntervals,
+        checkInterval as unknown as NodeJS.Timeout
+      ]
+    }
+  }
+
+  /**
+   * Обработчик автоматического отключения
+   */
+  private handleAutoDisconnect(guildId: string, reason: string) {
+    const player = this.players.get(guildId)
+    const connection = this.connections.get(guildId)
+    const playerState = this.playerStates.get(guildId)
+
+    if (!player || !connection || !playerState) {
+      return
+    }
+
+    console.log(`Автоматическое отключение для ${guildId}. Причина: ${reason}`)
+
+    if (playerState.embedMessage && playerState.embedMessage.editable) {
+      const disconnectEmbed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('⏹️ Воспроизведение остановлено')
+        .setDescription(`Автоматическое отключение: ${reason}`)
+        .setFooter({ text: 'Яндекс Музыка' })
+        .setTimestamp()
+
+      playerState.embedMessage.edit({ embeds: [disconnectEmbed], components: [] }).catch(error => {
+        console.error('Ошибка при обновлении сообщения при автоматическом отключении:', error)
+      })
+    }
+
+    player.stop()
+    connection.destroy()
+
+    this.cleanupPlayer(guildId)
+  }
+
+  /**
+   * Очистка всех ресурсов плеера
+   */
+  private cleanupPlayer(guildId: string) {
+    this.clearActivityTimers(guildId)
+
+    const playerState = this.playerStates.get(guildId)
+    if (playerState && playerState.checkIntervals) {
+      for (const interval of playerState.checkIntervals) {
+        clearInterval(interval)
+      }
+    }
+
+    this.players.delete(guildId)
+    this.connections.delete(guildId)
+    this.playerStates.delete(guildId)
+    this.currentResources.delete(guildId)
+  }
+
+  /**
+   * Очистка таймеров активности
+   */
+  private clearActivityTimers(guildId: string) {
+    if (this.inactivityTimers.has(guildId)) {
+      clearTimeout(this.inactivityTimers.get(guildId))
+      this.inactivityTimers.delete(guildId)
+    }
+
+    if (this.pauseTimers.has(guildId)) {
+      clearTimeout(this.pauseTimers.get(guildId))
+      this.pauseTimers.delete(guildId)
+    }
   }
 }

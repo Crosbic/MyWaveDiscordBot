@@ -134,9 +134,7 @@ export class YandexMusicService {
         console.error('Не удалось получить информацию о загрузке трека')
         return null
       }
-      // Берем первый доступный вариант загрузки (обычно высокого качества)
       const downloadInfo = downloadInfoResponse.data.result[0]
-      // Получаем URL для загрузки
       const downloadUrlResponse = await axios.get(`${downloadInfo.downloadInfoUrl}&format=json`, {
         headers: {
           Authorization: `OAuth ${token}`
@@ -151,7 +149,7 @@ export class YandexMusicService {
         console.error('Не удалось получить URL для загрузки трека')
         return null
       }
-      // Формируем итоговый URL для стриминга
+
       return `https://${downloadUrlResponse.data.host}/get-mp3/${downloadUrlResponse.data.s}/${downloadUrlResponse.data.ts}${downloadUrlResponse.data.path}`
     } catch (error: any) {
       console.error('Ошибка при получении URL для стриминга:', error)
@@ -177,14 +175,12 @@ export class YandexMusicService {
    */
   public async getUserInfo(token: string): Promise<{ userInfo: IUserData; hasPlus: boolean } | null> {
     try {
-      // Получаем информацию о статусе аккаунта
       const statusResponse = await axios.get('https://api.music.yandex.net/account/status', {
         headers: {
           Authorization: `OAuth ${token}`
         }
       })
 
-      // Данные аккаунта из Яндекса
       const userResponse = await axios.get('https://login.yandex.ru/info?format=json', {
         headers: {
           Authorization: `OAuth ${token}`
@@ -232,7 +228,6 @@ export class YandexMusicService {
     try {
       console.log(`Добавление трека ${trackId} в избранное для пользователя ${userId}`)
 
-      // Формируем URL-encoded строку вручную
       const data = `track_ids=${trackId}`
 
       console.log(`Отправляемые данные: ${data}`)

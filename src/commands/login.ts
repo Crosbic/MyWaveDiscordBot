@@ -13,7 +13,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const db = DatabaseService.getInstance()
   const yandexMusicService = YandexMusicService.getInstance()
 
-  // Проверяем, не авторизован ли уже пользователь
   if (db.hasUserToken(userId)) {
     await interaction.reply({
       content: 'Вы уже авторизованы через Яндекс! Используйте `/logout` чтобы выйти и авторизоваться заново.',
@@ -22,7 +21,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return
   }
 
-  // Получаем токен из опций команды
   const token = interaction.options.getString('token')
   if (!token) {
     await interaction.reply({
@@ -32,11 +30,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return
   }
 
-  // Отправляем сообщение о начале проверки
   await interaction.deferReply({ ephemeral: true })
 
   try {
-    // Получаем информацию о пользователе
     const userInfoResult = await yandexMusicService.getUserInfo(token)
 
     if (!userInfoResult) {
@@ -48,7 +44,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const { userInfo, hasPlus } = userInfoResult
 
-    // Проверяем наличие подписки Яндекс Плюс
     if (!hasPlus) {
       await interaction.editReply({
         content:
@@ -57,7 +52,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return
     }
 
-    // Сохраняем токен и информацию о пользователе
     db.saveUserToken(userId, token, userInfo)
 
     await interaction.editReply({

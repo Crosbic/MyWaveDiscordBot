@@ -18,4 +18,5 @@ export interface IPlayerState {
   lastTrackId: string | null
   skipRequested: boolean
   buttonCollector?: InteractionCollector<ButtonInteraction>
+  checkIntervals?: NodeJS.Timeout[]
 }
