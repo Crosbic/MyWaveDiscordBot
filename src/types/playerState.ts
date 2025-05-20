@@ -19,4 +19,5 @@ export interface IPlayerState {
   skipRequested: boolean
   buttonCollector?: InteractionCollector<ButtonInteraction>
   checkIntervals?: NodeJS.Timeout[]
+  publicButtonsAccess?: boolean
 }

@@ -28,6 +28,7 @@ import { IPlayerOptions } from '../types/playerOptions.js'
 import { IPlayerState } from '../types/playerState.js'
 import { ITrackInfo } from '../types/trackInfo.js'
 import { IYandexTrack } from '../types/yandexTrack.js'
+import config from '../config.js'
 
 process.env.OPUS_ENGINE = 'opusscript'
 
@@ -48,6 +49,7 @@ export class PlayerService {
   private currentResources: Map<string, AudioResource> = new Map()
   private inactivityTimers: Map<string, NodeJS.Timeout> = new Map()
   private pauseTimers: Map<string, NodeJS.Timeout> = new Map()
+  private serverButtonsAccess: Map<string, boolean> = new Map()
 
   private readonly EMPTY_CHANNEL_TIMEOUT = 20000
   private readonly NO_PLAYBACK_TIMEOUT = 30000
@@ -149,6 +151,9 @@ export class PlayerService {
     this.players.set(guildId, player)
     this.connections.set(guildId, connection)
 
+    // Используем серверную настройку публичного доступа при создании плеера
+    const publicButtonsAccess = this.serverButtonsAccess.has(guildId) ? this.serverButtonsAccess.get(guildId) : false
+
     this.playerStates.set(guildId, {
       isPlaying: false,
       currentTrack: null,
@@ -162,7 +167,8 @@ export class PlayerService {
       trackStartTime: null,
       retryCount: 0,
       lastTrackId: null,
-      skipRequested: false
+      skipRequested: false,
+      publicButtonsAccess // Используем серверную настройку
     })
 
     this.startActivityChecks(guildId, voiceChannel)
@@ -194,7 +200,7 @@ export class PlayerService {
 
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      time: 86400000 // 24 часа
+      time: 86400000
     })
 
     console.log('Коллектор кнопок создан')
@@ -202,8 +208,9 @@ export class PlayerService {
     collector.on('collect', async (interaction: ButtonInteraction) => {
       const player = this.players.get(guildId)
       const playerState = this.playerStates.get(guildId)
+      const connection = this.connections.get(guildId)
 
-      if (!player || !playerState) {
+      if (!player || !playerState || !connection) {
         await interaction.reply({
           content: 'Плеер не найден или уже остановлен.',
           ephemeral: true
@@ -211,11 +218,37 @@ export class PlayerService {
         return
       }
 
-      // Проверяем, что кнопку нажал тот же пользователь, который запустил воспроизведение
-      // Исключение делаем для кнопки "Лайк", которую может нажать любой пользователь
-      if (interaction.user.id !== playerState.discordUserId && interaction.customId !== 'like') {
+      const isOwner = interaction.user.id === playerState.discordUserId
+      const isGlobalAdmin =
+        config.admins.includes(interaction.user.id) || config.admins.includes(interaction.user.username)
+      const isLikeButton = interaction.customId === 'like'
+      const isPublicAccessEnabled = this.isPublicButtonsAccessEnabled(guildId)
+      let isInSameVoiceChannel = false
+
+      if (interaction.guild) {
+        const botVoiceChannelId = connection.joinConfig.channelId
+        const guildMember = await interaction.guild.members.fetch(interaction.user.id).catch(() => null)
+
+        isInSameVoiceChannel = guildMember?.voice.channelId === botVoiceChannelId
+      }
+
+      // Разрешаем использовать кнопки, если:
+      // 1. Пользователь - владелец плеера, или
+      // 2. Это кнопка "Лайк" (ее можно нажимать всем), или
+      // 3. Режим публичного доступа включен И пользователь находится в том же голосовом канале, или
+      // 4. Пользователь - глобальный админ (из списка ADMINS)
+      if (!isOwner && !isLikeButton && !isGlobalAdmin && !(isPublicAccessEnabled && isInSameVoiceChannel)) {
+        let errorMessage = ''
+
+        if (isPublicAccessEnabled) {
+          errorMessage = 'Вы должны находиться в том же голосовом канале, что и бот, чтобы управлять плеером.'
+        } else {
+          errorMessage =
+            'Только пользователь, запустивший воспроизведение, может управлять плеером. Администраторы сервера могут включить общий доступ к кнопкам с помощью команды /allow-buttons.'
+        }
+
         await interaction.reply({
-          content: 'Только пользователь, запустивший воспроизведение, может управлять плеером.',
+          content: errorMessage,
           ephemeral: true
         })
         return
@@ -248,6 +281,32 @@ export class PlayerService {
         message.edit({ components: [] }).catch(console.error)
       }
     })
+  }
+
+  /**
+   * Включение/выключение режима публичного доступа к кнопкам на уровне сервера
+   */
+  public setPublicButtonsAccess(guildId: string, enabled: boolean): boolean {
+    this.serverButtonsAccess.set(guildId, enabled)
+
+    const playerState = this.playerStates.get(guildId)
+    if (playerState) {
+      playerState.publicButtonsAccess = enabled
+    }
+
+    return true
+  }
+
+  /**
+   * Проверяет, включен ли режим публичного доступа к кнопкам на уровне сервера
+   */
+  public isPublicButtonsAccessEnabled(guildId: string): boolean {
+    if (this.serverButtonsAccess.has(guildId)) {
+      return this.serverButtonsAccess.get(guildId) as boolean
+    }
+
+    const playerState = this.playerStates.get(guildId)
+    return playerState ? !!playerState.publicButtonsAccess : false
   }
 
   /**
