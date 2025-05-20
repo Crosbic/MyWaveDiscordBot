@@ -221,6 +221,7 @@ export class PlayerService {
       const isOwner = interaction.user.id === playerState.discordUserId
       const isGlobalAdmin =
         config.admins.includes(interaction.user.id) || config.admins.includes(interaction.user.username)
+      const isServerAdmin = interaction.memberPermissions?.has('Administrator') || false
       const isLikeButton = interaction.customId === 'like'
       const isPublicAccessEnabled = this.isPublicButtonsAccessEnabled(guildId)
       let isInSameVoiceChannel = false
@@ -235,9 +236,16 @@ export class PlayerService {
       // Разрешаем использовать кнопки, если:
       // 1. Пользователь - владелец плеера, или
       // 2. Это кнопка "Лайк" (ее можно нажимать всем), или
-      // 3. Режим публичного доступа включен И пользователь находится в том же голосовом канале, или
-      // 4. Пользователь - глобальный админ (из списка ADMINS)
-      if (!isOwner && !isLikeButton && !isGlobalAdmin && !(isPublicAccessEnabled && isInSameVoiceChannel)) {
+      // 3. Пользователь - глобальный админ (из списка ADMINS), или
+      // 4. Пользователь - администратор сервера, или
+      // 5. Режим публичного доступа включен И пользователь находится в том же голосовом канале
+      if (
+        !isOwner &&
+        !isLikeButton &&
+        !isGlobalAdmin &&
+        !isServerAdmin &&
+        !(isPublicAccessEnabled && isInSameVoiceChannel)
+      ) {
         let errorMessage = ''
 
         if (isPublicAccessEnabled) {
