@@ -24,11 +24,11 @@ import {
 
 import { DatabaseService } from './database.service.js'
 import { YandexMusicService } from './yandex-music.service.js'
+import config from '../config.js'
 import { IPlayerOptions } from '../types/playerOptions.js'
 import { IPlayerState } from '../types/playerState.js'
 import { ITrackInfo } from '../types/trackInfo.js'
 import { IYandexTrack } from '../types/yandexTrack.js'
-import config from '../config.js'
 
 process.env.OPUS_ENGINE = 'opusscript'
 
@@ -117,16 +117,32 @@ export class PlayerService {
       throw new Error('Не удалось подключиться к голосовому каналу')
     }
 
+    connection.on('stateChange', (oldState, newState) => {
+      console.log(`[${guildId}] Соединение: ${oldState.status} -> ${newState.status}`)
+    })
+
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
+      console.log(`[${guildId}] Соединение потеряно, пытаемся восстановить...`)
+
       try {
         await Promise.race([
           entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
           entersState(connection, VoiceConnectionStatus.Connecting, 5_000)
         ])
+        console.log(`[${guildId}] Соединение восстанавливается...`)
       } catch (error) {
-        console.log(error)
-        this.cleanupPlayer(guildId)
+        console.log(`[${guildId}] Не удалось восстановить соединение автоматически`)
+        this.handleConnectionLost(guildId, 'Соединение с голосовым каналом потеряно')
       }
+    })
+
+    connection.on(VoiceConnectionStatus.Destroyed, () => {
+      console.log(`[${guildId}] Соединение уничтожено`)
+      this.cleanupPlayer(guildId)
+    })
+
+    connection.on('error', error => {
+      console.error(`[${guildId}] Ошибка соединения:`, error)
     })
 
     const embed = new EmbedBuilder()
@@ -1241,6 +1257,39 @@ export class PlayerService {
         checkInterval as unknown as NodeJS.Timeout
       ]
     }
+  }
+
+  private handleConnectionLost(guildId: string, reason: string) {
+    const playerState = this.playerStates.get(guildId)
+    const connection = this.connections.get(guildId)
+
+    console.log(`[${guildId}] Обработка потери соединения: ${reason}`)
+
+    if (playerState?.embedMessage?.editable) {
+      const disconnectEmbed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('⚠️ Соединение потеряно')
+        .setDescription(
+          `${reason}\n\nВоспроизведение остановлено. Используйте команду /my-wave для повторного запуска.`
+        )
+        .setFooter({ text: 'Яндекс Музыка' })
+        .setTimestamp()
+
+      playerState.embedMessage.edit({ embeds: [disconnectEmbed], components: [] }).catch(error => {
+        console.error('Ошибка при обновлении сообщения о потере соединения:', error)
+      })
+    }
+
+    // Уничтожаем соединение если оно ещё существует
+    if (connection && connection.state.status !== VoiceConnectionStatus.Destroyed) {
+      try {
+        connection.destroy()
+      } catch (error) {
+        console.error(`[${guildId}] Ошибка при уничтожении соединения:`, error)
+      }
+    }
+
+    this.cleanupPlayer(guildId)
   }
 
   /**
