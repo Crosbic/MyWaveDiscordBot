@@ -4,6 +4,8 @@ import { fileURLToPath } from 'url'
 
 import { Client, Collection, Events, GatewayIntentBits } from 'discord.js'
 
+import { Agent } from 'undici'
+
 import config from './config.js'
 import { DatabaseService } from './services/database.service.js'
 
@@ -18,6 +20,12 @@ declare module 'discord.js' {
   }
 }
 
+const agent = new Agent({
+  connect: {
+    timeout: 60_000
+  }
+})
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -25,7 +33,11 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildVoiceStates
-  ]
+  ],
+  rest: {
+    timeout: 60_000,
+    agent
+  }
 })
 
 client.commands = new Collection()
