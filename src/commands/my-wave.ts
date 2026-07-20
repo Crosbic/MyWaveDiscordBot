@@ -1,5 +1,6 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder, GuildMember } from 'discord.js'
 
+import { YandexAuthError } from '../errors/yandexAuthError.js'
 import { DatabaseService } from '../services/database.service.js'
 import { PlayerService } from '../services/player.service.js'
 import { YandexMusicService } from '../services/yandex-music.service.js'
@@ -136,6 +137,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     } catch (apiError: any) {
       console.error('Ошибка при работе с API Яндекс Музыки:', apiError)
       connection.destroy()
+
+      if (apiError instanceof YandexAuthError) {
+        await interaction.followUp({
+          content:
+            'Токен Яндекс истёк или недействителен. Выполните `/logout`, затем `/login` с новым токеном (см. `/login-help`).',
+          ephemeral: true
+        })
+        return
+      }
+
       await interaction.followUp({
         content: `Произошла ошибка при взаимодействии с API Яндекс Музыки: ${apiError.message || 'Неизвестная ошибка'}`,
         ephemeral: true

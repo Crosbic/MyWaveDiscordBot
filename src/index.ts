@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
-import { Client, Collection, Events, GatewayIntentBits } from 'discord.js'
+import { Client, Collection, GatewayIntentBits } from 'discord.js'
 
 import { Agent } from 'undici'
 
@@ -69,38 +69,6 @@ for (const file of eventFiles) {
     client.on(event.name, (...args) => event.execute(...args))
   }
 }
-
-client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return
-
-  const command = client.commands.get(interaction.commandName)
-
-  if (!command) {
-    console.error(`Команда ${interaction.commandName} не найдена.`)
-    return
-  }
-
-  try {
-    await command.execute(interaction)
-  } catch (error) {
-    console.error(error)
-
-    const replyOptions = {
-      content: 'Произошла ошибка при выполнении команды!',
-      ephemeral: true
-    }
-
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(replyOptions)
-    } else {
-      await interaction.reply(replyOptions)
-    }
-  }
-})
-
-client.once(Events.ClientReady, readyClient => {
-  console.log(`Бот запущен как ${readyClient.user.tag}`)
-})
 
 client.login(config.token).then(_ => console.log('Логин по токену успешен'))
 

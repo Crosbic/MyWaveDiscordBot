@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url'
 import Database from 'better-sqlite3'
 
 import { IUserData } from '../types/userData.js'
+import { decrypt, encrypt } from '../utils/crypto.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -40,6 +41,14 @@ export class DatabaseService {
       )
     `)
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS guild_settings (
+        guild_id TEXT PRIMARY KEY,
+        public_buttons_access BOOLEAN NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
     console.log('База данных инициализирована')
   }
 
@@ -70,7 +79,7 @@ export class DatabaseService {
 
     stmt.run(
       discordId,
-      accessToken,
+      encrypt(accessToken),
       userInfo.id,
       userInfo.fullName,
       userInfo.firstName,
@@ -109,7 +118,7 @@ export class DatabaseService {
     }
 
     return {
-      accessToken: row.access_token,
+      accessToken: decrypt(row.access_token),
       userInfo: {
         id: row.yandex_id,
         fullName: row.full_name,
@@ -120,6 +129,23 @@ export class DatabaseService {
         hasPlus: !!row.has_plus
       }
     }
+  }
+
+  getGuildButtonsAccess(guildId: string): boolean {
+    const stmt = this.db.prepare('SELECT public_buttons_access FROM guild_settings WHERE guild_id = ?')
+    const row = stmt.get(guildId) as { public_buttons_access: number } | undefined
+    return row ? !!row.public_buttons_access : false
+  }
+
+  setGuildButtonsAccess(guildId: string, enabled: boolean): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO guild_settings (guild_id, public_buttons_access, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(guild_id) DO UPDATE SET
+        public_buttons_access = excluded.public_buttons_access,
+        updated_at = CURRENT_TIMESTAMP
+    `)
+    stmt.run(guildId, enabled ? 1 : 0)
   }
 
   get userCount(): number {

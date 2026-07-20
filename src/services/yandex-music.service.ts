@@ -1,5 +1,6 @@
 import axios from 'axios'
 
+import { YandexAuthError } from '../errors/yandexAuthError.js'
 import { ITrackInfo } from '../types/trackInfo.js'
 import { IUserData } from '../types/userData.js'
 import { IYandexTrack, IYandexTrackSequenceItem } from '../types/yandexTrack.js'
@@ -17,6 +18,15 @@ export class YandexMusicService {
   }
 
   /**
+   * Бросает YandexAuthError, если ответ Яндекса — 401 (токен истёк/отозван).
+   */
+  private throwIfAuthError(error: any): void {
+    if (error?.response?.status === 401) {
+      throw new YandexAuthError()
+    }
+  }
+
+  /**
    * Получение информации о станции
    */
   public async getStationInfo(token: string, stationId: string) {
@@ -28,6 +38,7 @@ export class YandexMusicService {
       })
       return response.data
     } catch (error: any) {
+      this.throwIfAuthError(error)
       console.error('Ошибка при получении информации о станции:', error)
       throw new Error('Не удалось получить информацию о станции')
     }
@@ -56,6 +67,7 @@ export class YandexMusicService {
       )
       return response.data
     } catch (error: any) {
+      this.throwIfAuthError(error)
       console.error('Ошибка при отправке фидбэка о начале воспроизведения станции:', error)
       throw new Error('Не удалось отправить фидбэк о начале воспроизведения станции')
     }
@@ -84,6 +96,7 @@ export class YandexMusicService {
         }
       })
     } catch (error: any) {
+      this.throwIfAuthError(error)
       console.error('Ошибка при получении треков станции:', error)
       throw new Error('Не удалось получить треки станции')
     }
@@ -188,12 +201,12 @@ export class YandexMusicService {
       })
 
       if (!statusResponse.data || !statusResponse.data.result) {
-        console.error(`Не удалось выполнить запрос https://api.music.yandex.net/account/status с token=${token}`)
+        console.error('Не удалось выполнить запрос https://api.music.yandex.net/account/status')
         return null
       }
 
       if (!userResponse.data) {
-        console.error(`Не удалось выполнить запрос https://login.yandex.ru/info?format=json с token=${token}`)
+        console.error('Не удалось выполнить запрос https://login.yandex.ru/info?format=json')
         return null
       }
 
@@ -246,6 +259,7 @@ export class YandexMusicService {
       console.log(`Ответ сервера при добавлении трека в избранное: ${response.status}`)
       return response.status === 200
     } catch (error: any) {
+      this.throwIfAuthError(error)
       console.error('Ошибка при добавлении трека в список понравившихся:', error)
       if (error.response) {
         console.error('Статус ответа:', error.response.status)

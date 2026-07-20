@@ -25,6 +25,7 @@ import {
 import { DatabaseService } from './database.service.js'
 import { YandexMusicService } from './yandex-music.service.js'
 import config from '../config.js'
+import { YandexAuthError } from '../errors/yandexAuthError.js'
 import { IPlayerOptions } from '../types/playerOptions.js'
 import { IPlayerState } from '../types/playerState.js'
 import { ITrackInfo } from '../types/trackInfo.js'
@@ -168,7 +169,7 @@ export class PlayerService {
     this.connections.set(guildId, connection)
 
     // Используем серверную настройку публичного доступа при создании плеера
-    const publicButtonsAccess = this.serverButtonsAccess.has(guildId) ? this.serverButtonsAccess.get(guildId) : false
+    const publicButtonsAccess = this.isPublicButtonsAccessEnabled(guildId)
 
     this.playerStates.set(guildId, {
       isPlaying: false,
@@ -311,6 +312,7 @@ export class PlayerService {
    * Включение/выключение режима публичного доступа к кнопкам на уровне сервера
    */
   public setPublicButtonsAccess(guildId: string, enabled: boolean): boolean {
+    DatabaseService.getInstance().setGuildButtonsAccess(guildId, enabled)
     this.serverButtonsAccess.set(guildId, enabled)
 
     const playerState = this.playerStates.get(guildId)
@@ -329,8 +331,9 @@ export class PlayerService {
       return this.serverButtonsAccess.get(guildId) as boolean
     }
 
-    const playerState = this.playerStates.get(guildId)
-    return playerState ? !!playerState.publicButtonsAccess : false
+    const enabled = DatabaseService.getInstance().getGuildButtonsAccess(guildId)
+    this.serverButtonsAccess.set(guildId, enabled)
+    return enabled
   }
 
   /**
@@ -405,9 +408,13 @@ export class PlayerService {
       }
     } catch (error) {
       console.error('Ошибка при отправке лайка:', error)
+      const content =
+        error instanceof YandexAuthError
+          ? 'Ваш токен Яндекс истёк или недействителен. Выполните `/logout`, затем `/login` с новым токеном.'
+          : 'Произошла ошибка при отправке лайка.'
       try {
         await interaction.reply({
-          content: 'Произошла ошибка при отправке лайка.',
+          content,
           ephemeral: true
         })
       } catch (replyError) {
