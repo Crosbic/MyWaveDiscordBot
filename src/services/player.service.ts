@@ -131,7 +131,7 @@ export class PlayerService {
           entersState(connection, VoiceConnectionStatus.Connecting, 5_000)
         ])
         console.log(`[${guildId}] Соединение восстанавливается...`)
-      } catch (error) {
+      } catch (_error) {
         console.log(`[${guildId}] Не удалось восстановить соединение автоматически`)
         this.handleConnectionLost(guildId, 'Соединение с голосовым каналом потеряно')
       }

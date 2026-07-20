@@ -20,7 +20,7 @@ export class DatabaseService {
       fs.mkdirSync(dbDir, { recursive: true })
     }
 
-    const dbPath = path.join(dbDir, 'users.db')
+    const dbPath = path.join(dbDir, 'data.db')
     this.db = new Database(dbPath)
 
     this.db.pragma('foreign_keys = ON')

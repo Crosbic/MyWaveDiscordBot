@@ -1,0 +1,13 @@
+#!/bin/sh
+# Автоформатирование и линт папки src перед коммитом.
+# ESLint в проекте использует legacy-конфиг (.eslintrc.json), поэтому нужен флаг ниже.
+export ESLINT_USE_FLAT_CONFIG=false
+
+echo "pre-commit: prettier --write src"
+yarn format || exit 1
+
+echo "pre-commit: eslint --fix src"
+yarn lint:fix || exit 1
+
+# Возвращаем исправленные файлы в коммит
+git add src

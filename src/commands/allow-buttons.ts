@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js'
 
-import { PlayerService } from '../services/player.service.js'
 import config from '../config.js'
+import { PlayerService } from '../services/player.service.js'
 
 export const data = new SlashCommandBuilder()
   .setName('allow-buttons')
